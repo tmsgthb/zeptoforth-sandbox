@@ -69,7 +69,7 @@ The library of code included along with the zeptoforth kernel, which is present 
 * Best-effort fault recovery
 * Quad SPI flash storage support (on the STM32F746 DISCOVERY board and the RP2040)
 * A block editor (on the STM32F746 DISCOVERY board, the RP2040, and the RP2350)
-* Random number generator support (except on the STM32F411 "Black Pill" and STM32F411 Nucleo 64 boards)
+* Hardware random number generator support
 * Pseudorandom number generator support (using the TinyMT32 PRNG)
 * Programmable input/output support (on the RP2040 and the RP2350)
 * Watchdog support (on the RP2040 and the RP2350)
@@ -89,6 +89,7 @@ There is also support for loadable extras not included in any builds:
 * 8-bit pixmaps (in `extra/common/pixmap8.fs`)
 * 16-bit pixmaps (in `extra/common/pixmap16.fs`)
 * SSD1306-based displays (in `extra/common/ssd1306.fs`)
+* CH1116-based displays (in `extra/common/ch1116.fs`)
 * ST7735S-based displays (in `extra/common/st7735s.fs` with 16-bit framebuffers and in `extra/common/st7735s_8.fs` with 8-bit framebuffers)
 * ST7789V-based displays (in `extra/rp_common/st7789v_parallel_8.fs` for parallel displays and `extra/common/st7789v_spi_8.fs` for SPI displays with 8-bit framebuffers)
 * Monospace, bitmap fonts (in `extra/common/font.fs`)
@@ -96,6 +97,7 @@ There is also support for loadable extras not included in any builds:
 * Turtle graphics for ST7735S displays (in `extra/rp2040/turtle.fs`)
 * Neopixel support (in `extra/rp2040/neopixel.fs`, for the RP2040)
 * I2C LCD1602 16x2 character LCD displays (in `extra/rp_common/lcd1602.fs`)
+* NTC thermistor suport (in `extra/rp_common/ntc.fs`)
 
 ## Loading
 
