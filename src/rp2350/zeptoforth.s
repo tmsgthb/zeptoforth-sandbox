@@ -24,3 +24,5 @@
 
 	.include "../rp2350/config.s"
         .include "../rp2350/common.s"
+	.include "../rp2350/multicore.s"
+	.include "../common/final.s"

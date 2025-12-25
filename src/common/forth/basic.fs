@@ -1796,6 +1796,33 @@ commit-flash
 \ Print out multiple spaces
 : spaces ( u -- ) begin dup 0> while space 1- repeat drop ;
 
+\ Get the next token without advancing the input
+: token-ahead ( -- addr bytes | 0 0 )
+  >parse @ parse# < if
+    token-start dup token-end over - swap source drop + swap
+    dup 0= if nip 0 then
+  else
+    0 0
+  then
+;
+
+commit-flash
+
+\ Compile words and literals as POSTPONE'd until [[ is reached
+: ]] ( -- )
+  [immediate]
+  [compile-only]
+  begin
+    token-ahead ?dup if
+      s" [[" equal-strings? if token 2drop exit else postpone postpone then
+    else
+      drop
+      eval-eof @ ?dup if execute else true then
+      if ['] x-token-expected ?raise else display-prompt refill then
+    then
+  again
+;
+
 \ Set up the wordlist
 wordlist constant esc-string
 commit-flash
@@ -1874,8 +1901,9 @@ commit-flash
 \ Parse an octal escape
 : escape-octal ( -- )
   octal-len
+  dup 0= if drop exit then
   dup >r base @ >r 8 base !
-  >parse @ input + swap parse-unsigned if
+  >parse @ parse-buffer + swap parse-unsigned if
     r> base !
     dup 256 u< if
       c, r> advance-bytes
@@ -1883,15 +1911,16 @@ commit-flash
       drop rdrop
     then
   else
-    r> base ! rdrop
+    drop r> base ! rdrop
   then
 ;
 
 \ Skip an octal escape
 : skip-escape-octal ( -- )
   octal-len
+  dup 0= if drop exit then
   dup >r base @ >r 8 base !
-  >parse @ input + swap parse-unsigned if
+  >parse @ parse-buffer + swap parse-unsigned if
     r> base !
     256 u< if
       r> advance-bytes
@@ -1899,7 +1928,7 @@ commit-flash
       rdrop
     then
   else
-    r> base ! rdrop
+    drop r> base ! rdrop
   then
 ;
 
@@ -1909,22 +1938,24 @@ commit-flash
 \ Parse a hexadecimal escape
 : escape-hex ( -- )
   2 hex-len
+  dup 0= if drop exit then
   dup >r base @ >r 16 base !
-  >parse @ input + swap parse-unsigned if
+  >parse @ parse-buffer + swap parse-unsigned if
     r> base ! c, r> advance-bytes
   else
-    r> base ! rdrop
+    drop r> base ! rdrop
   then
 ;
 
 \ Skip a hexadecimal escape
 : skip-escape-hex ( -- )
   2 hex-len
+  dup 0= if drop exit then
   dup >r base @ >r 16 base !
-  >parse @ input + swap parse-unsigned if
+  >parse @ parse-buffer + swap parse-unsigned if
     drop r> base ! r> advance-bytes
   else
-    r> base ! rdrop
+    drop r> base ! rdrop
   then
 ;
 
