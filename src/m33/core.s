@@ -271,6 +271,7 @@ _le:	movs r0, tos
 	bx lr
 1:	movs tos, #0
 	bx lr
+        end_inlined
 
 	@@ Greater than or equal
 	define_word ">=", visible_flag
@@ -1129,6 +1130,7 @@ _comma_lit:
 	beq 1f
 	bl _asm_undefer_lit
 1:	ldr r2, =deferred_literal
+	ldr r1, =literal_deferred_q
 	str tos, [r2]
 	ldr r0, =-1
 	str r0, [r1]
