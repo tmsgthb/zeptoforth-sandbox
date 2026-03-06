@@ -1,4 +1,4 @@
-\ Copyright (c) 2023-2025 Travis Bemann
+\ Copyright (c) 2023-2026 Travis Bemann
 \
 \ Permission is hereby granted, free of charge, to any person obtaining a copy
 \ of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,25 @@ begin-module net-misc
   net-consts import
   net-config import
   armv6m import
+  tinymt32 import
+  lock import
+
+  \ TinyMT32 structure
+  tinymt32-size buffer: prng
+
+  \ TinyMT32 lock
+  lock-size buffer: prng-lock
+  
+  \ Initialize the TinyMT32
+  : init-prng ( -- )
+    prng-lock init-lock
+    rng::random prng tinymt32-init
+    prng tinymt32-prepare-example
+  ;
+  initializer init-prng
+
+  \ Get a pseudorandom number
+  : prandom ( -- x ) [: prng tinymt32-generate-uint32 ;] prng-lock with-lock ;
 
   \ Make an IPv4 address
   : make-ipv4-addr ( addr0 addr1 addr2 addr3 -- addr )
@@ -54,6 +73,11 @@ begin-module net-misc
     $02000000 xor \ ipv6-1
     0 \ ipv6-2
     $FE800000 \ ipv6-3
+  ;
+
+  \ Get whether an IPv6 address is link-local
+  : ipv6-addr-link-local? ( ipv6-0 ipv6-1 ipv6-2 ipv6-3 -- link-local? )
+    nip nip nip $FFC00000 and $FE800000 =
   ;
 
   \ IPv6 address size
@@ -103,6 +127,18 @@ begin-module net-misc
   \ The all-routers link-local multicast address
   : ALL_ROUTERS_LINK_LOCAL_MULTICAST $2 $0 $0 $FF020000 ;
 
+  \ Multicast DNS port
+  5353 constant mdns-port
+
+  \ Multicast DNS multicast IPv4 MAC address
+  $5E0000FB $0100 2constant MDNS_IPV4_MULTICAST_MAC_ADDR
+  
+  \ Multicast DNS multicast IPv4 address
+  224 0 0 251 make-ipv4-addr constant MDNS_IPV4_MULTICAST
+
+  \ Multicast DNS multicast IPv6 ddress
+  : MDNS_IPV6_MULTICAST $FB $0 $0 $FF020000 ;
+
   \ IPv6 version traffic flow
   6 28 lshift constant IPV6_VERSION_TRAFFIC_FLOW_CONST
   
@@ -115,8 +151,17 @@ begin-module net-misc
   \ DNS source port
   65535 constant dns-src-port
 
+  \ The A DNS QTYPE
+  $0001 constant DNS_QTYPE_A
+
   \ The AAAA DNS QTYPE
   $001C constant DNS_QTYPE_AAAA
+
+  \ The ANY DNS QTYPE
+  $00FF constant DNS_QTYPE_ANY
+
+  \ The ANY DNS QCLASS
+  $00FF constant DNS_QCLASS_ANY
   
   \ DHCP client port
   68 constant dhcp-client-port
@@ -325,6 +370,12 @@ begin-module net-misc
     ipv6-addr-size +field icmpv6-recursive-dns-addr
   end-structure
 
+  \ Multicast DNS qclass unicast-response bit
+  $8000 constant MDNS_UNICAST_RESPONSE
+
+  \ Multicast DNS rrclass cache-flush
+  $8000 constant MDNS_CACHE_FLUSH
+  
   \ DNS header structure
   begin-structure dns-header-size
     hfield: dns-ident
@@ -447,7 +498,7 @@ begin-module net-misc
   \ Default requested IP address
   0 0 0 0 make-ipv4-addr constant DEFAULT_IPV4_ADDR
 \  192 168 1 100 make-ipv4-addr constant DEFAULT_IPV4_ADDR
-  
+
   \ DNS flags
   15 bit constant DNS_QR_RESPONSE
   11 constant DNS_OPCODE_LSB
@@ -960,6 +1011,19 @@ begin-module net-misc
     again
   ;
 
+  \ DNS name reference size
+  2 constant dns-name-ref-size
+
+  \ Encode a DNS name reference
+  : encode-dns-name-ref ( offset buf -- ) swap $C000 or rev16 swap hunaligned! ;
+
+  \ Calculate the size of an outgoing DNS answer payload
+  : dns-answer-payload-size { addr-size name-size count -- bytes }
+    dns-header-size
+    count 0> if name-size dns-name-size + dns-abody-size + addr-size + then
+    count 1- 0 max dns-name-ref-size dns-abody-size + addr-size + * +
+  ;
+  
   \ Get full TCP header size
   : full-tcp-header-size ( addr -- size ) tcp-data-offset c@ 2 rshift ;
 
@@ -1039,7 +1103,7 @@ begin-module net-misc
   \ Initialize ephemeral ports
   : init-ephemeral-ports ( -- )
     ephemeral-port-lock lock::init-lock
-    rng::random [ MAX_EPHEMERAL_PORT MIN_EPHEMERAL_PORT - ] literal umod
+    prandom [ MAX_EPHEMERAL_PORT MIN_EPHEMERAL_PORT - ] literal umod
     MIN_EPHEMERAL_PORT + current-ephemeral-port !
   ;
 
@@ -1154,6 +1218,20 @@ begin-module net-misc
       then
     repeat
     0 0 false
+  ;
+
+  \ Check for a .local DNS name
+  : is-local-dns? { addr bytes -- local? }
+    addr bytes { cur-addr cur-bytes }
+    begin cur-bytes 0> while
+      cur-addr c@ [char] . = if
+        1 +to cur-addr -1 +to cur-bytes
+        cur-addr to addr cur-bytes to bytes
+      else
+        1 +to cur-addr -1 +to cur-bytes
+      then
+    repeat
+    addr bytes s" local" equal-case-strings?
   ;
 
 end-module

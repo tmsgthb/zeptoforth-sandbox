@@ -1,4 +1,4 @@
-\ Copyright (c) 2023-2025 Travis Bemann
+\ Copyright (c) 2023-2026 Travis Bemann
 \
 \ Permission is hereby granted, free of charge, to any person obtaining a copy
 \ of this software and associated documentation files (the "Software"), to deal
@@ -978,7 +978,8 @@ begin-module net-ipv4
       method evict-dns ( c-addr bytes self -- )
       
       \ Save an IPv4 address by a DNS name
-      method save-ipv4-addr-by-dns ( ipv4-addr ident c-addr bytes self -- )
+      method save-ipv4-addr-by-dns
+      ( ipv4-addr mdns? ident c-addr bytes self -- )
 
       \ Indicate an abnormal response by DNS name
       method save-response-by-dns ( response ident self -- )
@@ -1035,12 +1036,12 @@ begin-module net-ipv4
       ; define lookup-ipv4-addr-by-dns
 
       \ Save an IPv4 address by a DNS name
-      :noname ( ipv4-addr ident c-addr bytes self -- )
-        [: { ipv4-addr ident c-addr bytes self }
+      :noname ( ipv4-addr mdns? ident c-addr bytes self -- )
+        [: { ipv4-addr mdns? ident c-addr bytes self }
           max-dns-cache 0 ?do
             self cached-dns-names i cells + @ ?dup if
               count c-addr bytes equal-case-strings?
-              self cached-dns-idents i cells + @ ident = and if
+              self cached-dns-idents i cells + @ ident = mdns? or and if
                 ipv4-addr self cached-ipv4-addrs i cells + !
                 -1 self cached-dns-idents i cells + !
                 self newest-dns-age @ 1+ dup self newest-dns-age !
@@ -2330,6 +2331,12 @@ begin-module net-ipv4
       \ Current TTL
       cell member intf-ttl
 
+      \ Multicast DNS hostname address
+      256 member mdns-hostname-addr
+
+      \ Multicast DNS hostname lock
+      lock-size member mdns-hostname-lock
+      
       \ MAC address resolution semaphore
       sema-size member mac-addr-resolve-sema
 
@@ -2441,6 +2448,9 @@ begin-module net-ipv4
       \ DHCP lock
       lock-size member dhcp-lock
 
+      \ Multicast DNS enabled flag
+      cell member mdns-enabled?
+
       \ Process a MAC address for an IPv4 address
       method process-ipv4-mac-addr ( D: mac-addr ipv4-addr self -- )
       
@@ -2548,6 +2558,12 @@ begin-module net-ipv4
 
       \ Process an IPv4 DNS response packet
       method process-ipv4-dns-packet ( addr bytes self -- )
+
+      \ Process an IPv4 Multicast DNS request packet
+      method process-ipv4-mdns-request ( src-addr addr bytes self -- )
+
+      \ Process an IPv4 Multicast DNS response packet
+      method process-ipv4-mdns-packet ( src-addr addr bytes self -- )
       
       \ Process an IPv4 ICMP packet
       method process-ipv4-icmp-packet ( src-addr protocol addr bytes self -- )
@@ -2574,7 +2590,7 @@ begin-module net-ipv4
       
       \ Process IPv4 DNS response packet answers
       method process-ipv4-dns-answers
-      ( addr bytes all-addr all-bytes ancount ident self -- )
+      ( mdns? addr bytes all-addr all-bytes ancount ident self -- )
 
       \ Send an ARP request packet
       method send-ipv4-arp-request ( dest-addr self -- )
@@ -2584,6 +2600,9 @@ begin-module net-ipv4
 
       \ Send a DNS request packet
       method send-ipv4-dns-request ( c-addr bytes self -- )
+
+      \ Send an IPv4 Multicast DNS answer packet
+      method send-ipv4-mdns-answer ( src-addr unicast-response? ident self -- )
 
       \ Send a UDP packet with a specified source IPv4 address and destination
       \ MAC address
@@ -2750,6 +2769,9 @@ begin-module net-ipv4
       192 168 1 254 make-ipv4-addr self gateway-ipv4-addr !
       8 8 8 8 make-ipv4-addr self dns-server-ipv4-addr !
       64 self intf-ttl !
+      false self mdns-enabled? !
+      self mdns-hostname-addr 256 0 fill
+      lock-size self mdns-hostname-lock init-lock
       1 0 self mac-addr-resolve-sema init-sema
       1 0 self dns-resolve-sema init-sema
       0 self current-dhcp-xid !
@@ -2788,6 +2810,23 @@ begin-module net-ipv4
       <address-map> self address-map init-object
       <dns-cache> self dns-cache init-object
     ; define new
+
+    \ Set Multicast DNS enabled
+    :noname { enabled? self -- }
+      self mdns-enabled? @ not enabled? and if
+        MDNS_IPV4_MULTICAST_MAC_ADDR
+        self out-frame-interface @ add-multicast-filter
+      else
+        self mdns-enabled? @ enabled? not and if
+          MDNS_IPV4_MULTICAST_MAC_ADDR
+          self out-frame-interface @ remove-multicast-filter
+        then
+      then
+      enabled? self mdns-enabled? !
+    ; define mdns-enabled!
+
+    \ Get Multicast DNS enabled
+    :noname ( self -- enabled? ) mdns-enabled? @ ; define mdns-enabled@
 
     \ Get the IPv4 address
     :noname ( self -- addr )
@@ -2849,7 +2888,23 @@ begin-module net-ipv4
     :noname { ttl self -- }
       ttl 255 min 1 max self intf-ttl !
     ; define intf-ttl!
-    
+
+    \ Set Multicast DNS hostname
+    :noname ( addr bytes self -- )
+      2 pick 2 pick validate-dns-name
+      [: { self }
+        dup self mdns-hostname-addr c!
+        self mdns-hostname-addr 1+ swap move
+      ;] over mdns-hostname-lock with-lock
+    ; define mdns-hostname!
+
+    \ Get Multicast DNS hostname
+    :noname ( self -- addr bytes )
+      [: { self }
+        self mdns-hostname-addr count
+      ;] over mdns-hostname-lock with-lock
+    ; define mdns-hostname@
+
     \ Process a MAC address for an IPv4 address
     :noname { D: mac-addr ipv4-addr self -- }
       mac-addr ipv4-addr self address-map save-mac-addr-by-ipv4
@@ -2954,7 +3009,7 @@ begin-module net-ipv4
 
     \ Send an IPv4 TCP SYN+ACK packet
     :noname { src-addr addr bytes endpoint self -- }
-      rng::random endpoint endpoint-init-local-seq!
+      prandom endpoint endpoint-init-local-seq!
       addr tcp-seq-no @ rev 1+
       addr bytes tcp-mss@ not if
         drop [ mtu-size ipv4-header-size - tcp-header-size - ] literal
@@ -2981,7 +3036,7 @@ begin-module net-ipv4
       over { src-addr }
       dup tcp-src-port h@ rev16 swap
       dup tcp-dest-port h@ rev16 swap
-      rng::random swap
+      prandom swap
       tcp-seq-no @ rev
       0
       TCP_RST
@@ -3372,6 +3427,12 @@ begin-module net-ipv4
           self process-ipv4-dns-packet
           exit
         then
+        addr udp-src-port h@ rev16 mdns-port = if
+          src-addr
+          addr udp-header-size + bytes udp-header-size -
+          self process-ipv4-mdns-packet
+          exit
+        then
         addr udp-src-port h@ rev16 dhcp-server-port =
         addr udp-dest-port h@ rev16 dhcp-client-port = and if
           addr udp-header-size + bytes udp-header-size -
@@ -3425,27 +3486,64 @@ begin-module net-ipv4
         [ dns-qbody-size negate ] literal +to bytes
         -1 +to qdcount
       repeat
-      addr bytes all-addr all-bytes ancount ident self process-ipv4-dns-answers
+      false addr bytes all-addr all-bytes ancount ident
+      self process-ipv4-dns-answers
     ; define process-ipv4-dns-packet
 
+    \ Process an IPv4 Multicast DNS response packet
+    :noname ( src-addr ) { addr bytes self -- }
+      self mdns-enabled? @ not if drop exit then
+      bytes dns-header-size < if drop exit then
+      addr dns-flags hunaligned@ rev16 { flags }
+      DNS_QR_RESPONSE flags and 0= if
+        addr bytes self process-ipv4-mdns-request exit
+      then
+      { src-addr }
+      \ unicast? if
+      \   src-addr MDNS_IPV4_MULTICAST =
+      \   src-addr self intf-ipv4-netmask@ and
+      \   self gateway-ipv4-addr@ self intf-ipv4-netmask@ and = or not if
+      \     exit
+      \   then
+      \ then
+      addr bytes { all-addr all-bytes }
+      addr dns-ident hunaligned@ rev16 { ident }
+      DNS_OPCODE_MASK flags and if exit then
+      DNS_RCODE_MASK flags and if exit then
+      addr dns-qdcount hunaligned@ rev16 { qdcount }
+      addr dns-ancount hunaligned@ rev16 { ancount }
+      dns-header-size +to addr
+      [ dns-header-size negate ] literal +to bytes
+      begin qdcount 0> bytes 0> and while
+        addr bytes skip-dns-name to bytes to addr
+        bytes dns-qbody-size < if exit then
+        dns-qbody-size +to addr
+        [ dns-qbody-size negate ] literal +to bytes
+        -1 +to qdcount
+      repeat
+      true addr bytes all-addr all-bytes ancount ident
+      self process-ipv4-dns-answers
+    ; define process-ipv4-mdns-packet
+
     \ Process IPv4 DNS response packet answers
-    :noname { addr bytes all-addr all-bytes ancount ident self -- }
+    :noname { mdns? addr bytes all-addr all-bytes ancount ident self -- }
       begin ancount 0> bytes 0> and while
         addr bytes { saved-addr saved-bytes }
         addr bytes skip-dns-name to bytes to addr
         bytes dns-abody-size < if exit then
 
-        addr dns-abody-type hunaligned@ [ 1 rev16 ] literal =
-        addr dns-abody-class hunaligned@ [ 1 rev16 ] literal = and
+        addr dns-abody-type hunaligned@ [ DNS_QTYPE_A rev16 ] literal =
+        addr dns-abody-class hunaligned@
+        [ MDNS_CACHE_FLUSH rev16 ] literal bic [ 1 rev16 ] literal = and
         addr dns-abody-rdlength hunaligned@ [ 4 rev16 ] literal = and if
           dns-abody-size +to addr
           [ dns-abody-size negate ] literal +to bytes
           bytes 4 < if exit then
           addr unaligned@ rev
-          saved-addr saved-bytes all-addr all-bytes ident self 256 [:
-            { ident self buf }
-            buf parse-dns-name if
-              ident buf rot self dns-cache save-ipv4-addr-by-dns
+          saved-addr saved-bytes all-addr all-bytes mdns? ident self 256 [:
+            { mdns? ident self buf }
+            buf parse-dns-name if { len }
+              mdns? ident buf len self dns-cache save-ipv4-addr-by-dns
               self dns-resolve-sema broadcast
               self dns-resolve-sema give
             else
@@ -3460,6 +3558,128 @@ begin-module net-ipv4
         then
       repeat
     ; define process-ipv4-dns-answers
+
+    \ Process IPv4 Multicast DNS requests
+    :noname ( src-addr addr bytes self -- )
+      [: { src-addr addr bytes self }
+        self mdns-hostname@ nip 0= if exit then
+        addr bytes { all-addr all-bytes }
+        addr dns-ident hunaligned@ rev16 { ident }
+        addr dns-flags hunaligned@ rev16 { flags }
+        DNS_OPCODE_MASK flags and if exit then
+        DNS_RCODE_MASK flags and if exit then
+        addr dns-qdcount hunaligned@ rev16 { qdcount }
+        addr dns-ancount hunaligned@ rev16 { ancount }
+        dns-header-size +to addr
+        [ dns-header-size negate ] literal +to bytes
+        false { match? }
+        false { unicast-response? }
+        begin qdcount 0> bytes 0> and while
+          addr bytes all-addr all-bytes self 256 [: { self buf }
+            buf parse-dns-name if
+              buf swap self mdns-hostname@ equal-case-strings? true
+            else
+              drop false false
+            then
+          ;] with-allot not if exit then { name-found? }
+          addr bytes skip-dns-name to bytes to addr
+          bytes dns-qbody-size < if exit then
+          name-found? if
+            addr dns-qbody-qtype hunaligned@
+            dup [ DNS_QTYPE_A rev16 ] literal =
+            swap [ DNS_QTYPE_ANY rev16 ] literal = or
+            addr dns-qbody-qclass hunaligned@
+            [ MDNS_UNICAST_RESPONSE rev16 ] literal bic
+            dup [ 1 rev16 ] literal =
+            swap [ DNS_QCLASS_ANY rev16 ] literal = or and if
+              true to match?
+              addr dns-qbody-qclass hunaligned@
+              [ MDNS_UNICAST_RESPONSE rev16 ] literal and if
+                true to unicast-response?
+              then
+            then
+          then
+          dns-qbody-size +to addr
+          [ dns-qbody-size negate ] literal +to bytes
+          -1 +to qdcount
+        repeat
+        begin ancount 0> bytes 0> and while
+          addr bytes { saved-addr saved-bytes }
+          addr bytes skip-dns-name to bytes to addr
+          bytes dns-abody-size < if exit then
+          addr dns-abody-rdlength hunaligned@ rev16 { rdlength }
+          dns-abody-size rdlength + dup +to addr negate +to bytes
+          -1 +to ancount
+        repeat
+        match? if
+          src-addr unicast-response? ident self send-ipv4-mdns-answer
+        then
+      ;] over mdns-hostname-lock with-lock
+    ; define process-ipv4-mdns-request
+
+    \ Send an IPv4 Multicast DNS answer
+    :noname { src-addr unicast-response? ident self -- }
+      unicast-response? ident self
+      unicast-response? if
+        src-addr self address-map lookup-mac-addr-by-ipv4 not if
+          2drop 2drop drop exit
+        then
+      else
+        MDNS_IPV4_MULTICAST_MAC_ADDR
+      then
+      self intf-ipv4-addr@
+      mdns-port
+      unicast-response? if src-addr else MDNS_IPV4_MULTICAST then
+      mdns-port
+      cell self mdns-hostname@ nip 1 dns-answer-payload-size [:
+        { unicast-response? ident self buf }
+        unicast-response? if ident rev16 else 0 then buf dns-ident hunaligned!
+        [ DNS_QR_RESPONSE DNS_AA or rev16 ] literal buf dns-flags hunaligned!
+        0 buf dns-qdcount hunaligned!
+        [ 1 rev16 ] literal buf dns-ancount hunaligned!
+        0 buf dns-nscount hunaligned!
+        0 buf dns-arcount hunaligned!
+        self mdns-hostname@ { name-addr name-bytes }
+        dns-header-size +to buf
+        name-addr name-bytes buf format-dns-name
+        name-bytes dns-name-size +to buf
+        [ DNS_QTYPE_A rev16 ] literal buf dns-abody-type hunaligned!
+        [ 1 MDNS_CACHE_FLUSH or rev16 ] literal buf dns-abody-class hunaligned!
+        self dhcp-discover-state @
+        dup dhcp-discovered = over dhcp-renewing = or swap dhcp-rebinding = or
+        if
+          systick::systick-counter { time }
+          self dhcp-discover-state @ case
+            dhcp-discovered of
+              self dhcp-renew-interval @ self dhcp-renew-start @ + time -
+            endof
+            dhcp-renewing of
+              time self dhcp-rebind-start @ - self dhcp-rebind-interval @ > if
+                dhcp-rebind-retry-interval
+              else
+                time self dhcp-renew-start @ - self dhcp-renew-interval @ > if
+                  self dhcp-renew-interval @
+                else
+                  self dhcp-renew-interval @ self dhcp-renew-start @ + time -
+                then
+              then
+            endof
+            dhcp-rebinding of
+              self dhcp-rebind-interval @ self dhcp-rebind-start @ + time -
+              dhcp-rebind-retry-interval max
+            endof
+          endcase
+          10000 /
+        else
+          $7FFFFFFF
+        then
+        rev buf dns-abody-ttl unaligned!
+        [ cell rev16 ] literal buf dns-abody-rdlength hunaligned!
+        dns-abody-size +to buf
+        self intf-ipv4-addr@ rev buf unaligned!
+        true
+      ;] self send-ipv4-udp-packet-raw not if 2drop drop then
+    ; define send-ipv4-mdns-answer
     
     \ Process an IPv4 ICMP packet
     :noname { src-addr protocol addr bytes self -- }
@@ -3717,13 +3937,24 @@ begin-module net-ipv4
 
     \ Send a DNS request packet
     :noname { c-addr bytes self -- }
-      c-addr bytes self dns-src-port self dns-server-ipv4-addr @ dns-port
+      self mdns-enabled? @ c-addr bytes is-local-dns? and if
+        true c-addr bytes self
+        MDNS_IPV4_MULTICAST_MAC_ADDR self intf-ipv4-addr@ mdns-port
+        MDNS_IPV4_MULTICAST mdns-port
+      else
+        false c-addr bytes self
+        self dns-server-ipv4-addr @ self resolve-ipv4-addr-mac-addr not if
+          2drop 2drop 2drop exit
+        then
+        self intf-ipv4-addr@ dns-src-port
+        self dns-server-ipv4-addr @ dns-port
+      then
       bytes dns-name-size [ dns-header-size dns-qbody-size + ] literal + [:
-        { c-addr bytes self buf }
-        rng::random $FFFF and
+        { mdns? c-addr bytes self buf }
+        mdns? if 0 else prandom $FFFF and then
         dup c-addr bytes self dns-cache reserve-dns
         rev16 buf dns-ident hunaligned!
-        [ DNS_RD rev16 ] literal buf dns-flags hunaligned!
+        mdns? if 0 else [ DNS_RD rev16 ] literal then buf dns-flags hunaligned!
         [ 1 rev16 ] literal buf dns-qdcount hunaligned!
         [ 0 rev16 ] literal buf dns-ancount hunaligned!
         [ 0 rev16 ] literal buf dns-nscount hunaligned!
@@ -3731,10 +3962,10 @@ begin-module net-ipv4
         dns-header-size +to buf
         c-addr bytes buf format-dns-name
         bytes dns-name-size +to buf
-        [ 1 rev16 ] literal buf dns-qbody-qtype hunaligned!
+        [ DNS_QTYPE_A rev16 ] literal buf dns-qbody-qtype hunaligned!
         [ 1 rev16 ] literal buf dns-qbody-qclass hunaligned!
         true
-      ;] self send-ipv4-udp-packet drop
+      ;] self send-ipv4-udp-packet-raw not if 2drop 2drop then
     ; define send-ipv4-dns-request
 
     \ Send a UDP packet with a specified source IPv4 address
@@ -3991,7 +4222,7 @@ begin-module net-ipv4
         src-port dest-ipv4-addr dest-port mac-addr endpoint
         try-ipv4-connect-endpoint if
           endpoint self [: { endpoint self }
-            rng::random endpoint endpoint-init-local-seq!
+            prandom endpoint endpoint-init-local-seq!
             endpoint reset-endpoint-local-port
             endpoint self send-syn
           ;] endpoint with-endpoint
@@ -4306,7 +4537,7 @@ begin-module net-ipv4
       $FFFFFFFFFFFF. self dhcp-server-mac-addr 2!
       $00000000 self dhcp-req-ipv4-addr !
       $FFFFFFFF self dhcp-server-ipv4-addr !
-      rng::random self current-dhcp-xid !
+      prandom self current-dhcp-xid !
       dhcp-wait-offer self dhcp-discover-state !
       systick::systick-counter self dhcp-discover-stage-start !
       self
@@ -4984,6 +5215,9 @@ begin-module net-ipv4
             dup self ip-interface @ intf-ipv4-addr@ =
             over self ip-interface @ intf-ipv4-broadcast@ = or
             over $FFFFFFFF = or
+            self ip-interface @ mdns-enabled@ if
+              over MDNS_IPV4_MULTICAST = or
+            then
             self ip-interface @ dhcp-discover-state @ dhcp-wait-ack =
             rot self ip-interface @ dhcp-req-ipv4-addr @ = and or
             self ip-interface @ dhcp-discover-state @ dhcp-wait-offer = or if

@@ -239,6 +239,7 @@ begin-module pico-w-net-http
     my-interface @ gateway-ipv4-addr@ cr ." Gateway IPv4 address: " ipv4.
     my-interface @ dns-server-ipv4-addr@ cr ." DNS server IPv4 address: " ipv4.
     my-cyw43-net toggle-pico-w-led
+    true my-interface @ mdns-enabled!
   ;
 
   \ Run the test
