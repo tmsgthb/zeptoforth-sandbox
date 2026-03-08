@@ -1,4 +1,5 @@
 \ Copyright (c) 2023-2026 Travis Bemann
+\ Copyright (c) 2026 Ken Mitton
 \ 
 \ Permission is hereby granted, free of charge, to any person obtaining a copy
 \ of this software and associated documentation files (the "Software"), to deal
@@ -26,4 +27,4 @@
 #include extra/common/pixmap8_utils.fs
 #include extra/common/font.fs
 #include extra/common/simple_font.fs
-#include extra/common/st7735s_8.fs
+#include extra/common/ili9341_spi_8.fs

@@ -1,4 +1,5 @@
-\ Copyright (c) 2023-2026 Travis Bemann
+\ Copyright (c) 2022-2026 Travis Bemann
+\ Copyright (c) 2026 Ken Mitton
 \ 
 \ Permission is hereby granted, free of charge, to any person obtaining a copy
 \ of this software and associated documentation files (the "Software"), to deal
@@ -18,12 +19,24 @@
 \ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 \ SOFTWARE.
 
-#include extra/common/clip.fs
-#include extra/common/bitmap.fs
-#include extra/common/bitmap_utils.fs
-#include extra/common/bitmap_lit.fs
-#include extra/common/pixmap8.fs
-#include extra/common/pixmap8_utils.fs
-#include extra/common/font.fs
-#include extra/common/simple_font.fs
-#include extra/common/st7735s_8.fs
+begin-module ili9341-8-terminal
+
+  ili9341-8-print import
+  
+  : run-test
+    begin
+      key
+      case
+        $0D of cr-ili9341 cr false endof
+        $7F of
+          ili9341-cursor@ 0<> swap 0<> or if
+            bs-ili9341 $20 emit-ili9341 bs-ili9341 $08 emit $20 emit $08 emit
+          then
+          false endof
+        $1B of true endof
+        dup emit-ili9341 dup emit false swap
+      endcase
+    until
+  ;
+  
+end-module
