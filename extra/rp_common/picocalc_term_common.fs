@@ -26,14 +26,19 @@ begin-module picocalc-term-common
   constant use-st7789v?
   defined? ili9341-8-common defined? ili9341-text-common or use-st7789v? not and
   constant use-ili9341?
+  defined? st7796s-8-common defined? st7796s-text-common or use-st7789v? not and use-ili9341? not and
+  constant use-st7796s?
 
   \ Select fonts automatically based on what fonts are loaded
   defined? simple-font-5x8 constant use-5x8-font?
   defined? simple-font-5x8-v2 use-5x8-font? not and constant use-5x8-v2-font?
   defined? simple-font-6x8 use-5x8-font? not and use-5x8-v2-font? not and
   constant use-6x8-font?
-  defined? simple-font use-5x8-font? not and use-5x8-v2-font? not and
+  defined? simple-font-6x12 use-5x8-font? not and use-5x8-v2-font? not and
   use-6x8-font? not and
+  constant use-6x12-font?
+  defined? simple-font use-5x8-font? not and use-5x8-v2-font? not and
+  use-6x8-font? not and use-6x12-font? not and
   constant use-7x8-font?
 
   \ Select a core to use for the PicoCalc tasks
@@ -45,7 +50,7 @@ begin-module picocalc-term-common
 
   \ Ensure that at least one font is available
   : font-test ( -- )
-    use-5x8-font? use-5x8-v2-font? or use-6x8-font? or use-7x8-font? or not if
+    use-5x8-font? use-5x8-v2-font? or use-6x8-font? or use-6x12-font? or use-7x8-font? or not if
       [: ." no font is available" cr ;] ?raise
     then
   ;
@@ -67,6 +72,9 @@ begin-module picocalc-term-common
   [then]
   use-6x8-font? [if]
     simple-font-6x8 import
+  [then]
+  use-6x12-font? [if]
+    simple-font-6x12 import
   [then]
   use-7x8-font? [if]
     simple-font import
@@ -90,6 +98,9 @@ begin-module picocalc-term-common
     use-6x8-font? [if]
       initializer init-simple-font-6x8
     [then]
+    use-6x12-font? [if]
+      initializer init-simple-font-6x12
+    [then]
     use-7x8-font? [if]
       initializer init-simple-font
     [then]
@@ -98,7 +109,7 @@ begin-module picocalc-term-common
     use-5x8-font? use-5x8-v2-font? or [if]
       5 constant char-width
     [then]
-    use-6x8-font? [if]
+    use-6x8-font? use-6x12-font? or [if]
       6 constant char-width
     [then]
     use-7x8-font? [if]
@@ -106,10 +117,18 @@ begin-module picocalc-term-common
     [then]
 
     \ Font character height
-    8 constant char-height
+    use-6x12-font? [if]
+      12 constant char-height
+    [else]
+      8 constant char-height
+    [then]
 
     \ Display width
-    320 constant display-width
+    use-st7796s? not [if]
+      320 constant display-width
+    [else]
+      480 constant display-width
+    [then]
     
     \ Display height
     use-st7789v? not use-ili9341? not and [if]
@@ -143,12 +162,12 @@ begin-module picocalc-term-common
     15 constant display-rst-pin
 
     \ Display backlight pin
-    use-st7789v? use-ili9341? or [if]
+    use-st7789v? use-ili9341? or use-st7796s? or [if]
       12 constant display-bl-pin
     [then]
     
     \ Do we invert the display
-    use-st7789v? not use-ili9341? not and [if]
+    use-st7789v? not use-ili9341? not and use-st7796s? not and [if]
       true constant display-invert
     [then]
     
@@ -1674,6 +1693,7 @@ begin-module picocalc-term-common
     [ use-5x8-font? ] [if] a-simple-font-5x8 [then]
     [ use-5x8-v2-font? ] [if] a-simple-font-5x8-v2 [then]
     [ use-6x8-font? ] [if] a-simple-font-6x8 [then]
+    [ use-6x12-font? ] [if] a-simple-font-6x12 [then]
     [ use-7x8-font? ] [if] a-simple-font [then]
   ;
   

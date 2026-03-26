@@ -20,10 +20,10 @@
 \ SOFTWARE.
 
 \ Drawn from:
-\ * https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf
-\ * https://github.com/adafruit/Adafruit_ILI9341
+\ * https://www.displayfuture.com/Display/datasheet/controller/ST7796s.pdf
+\ * https://github.com/adafruit/Adafruit-ST7735-Library/blob/master/Adafruit_ST7796S.cpp
 
-begin-module ili9341-text-common
+begin-module st7796s-text-common
 
   oo import
   bitmap import
@@ -33,22 +33,43 @@ begin-module ili9341-text-common
   pin import
   armv6m import
 
-  begin-module ili9341-text-common-internal
+  begin-module st7796s-text-common-internal
 
-    \ ILI9341 MADCTL
-    $80 constant MADCTL_MY \  ///< Bottom to top
-    $40 constant MADCTL_MX \  ///< Right to left
-    $20 constant MADCTL_MV \  ///< Reverse Mode
-    $10 constant MADCTL_ML \  ///< LCD refresh Bottom to top
-    $00 constant MADCTL_RGB \ ///< Red-Green-Blue pixel order
-    $08 constant MADCTL_BGR \ ///< Blue-Green-Red pixel order
-    $04 constant MADCTL_MH \  ///< LCD refresh right to left
+    \ ST7796S MADCTL bits
+    $80 constant MADCTL_MY
+    $40 constant MADCTL_MX
+    $20 constant MADCTL_MV
+    $10 constant MADCTL_ML
+    $08 constant MADCTL_BGR
+    $00 constant MADCTL_RGB
 
-    \ ILI9341 registers
-    $00 constant REG_NOP  \     ///< No-op register
-    $01 constant REG_SWRESET  \ ///< Software reset register
-    $04 constant REG_RDDID  \   ///< Read display identification information
-    $09 constant REG_RDDST  \   ///< Read Display Status
+    \ ST7796S registers
+    $01 constant REG_SWRESET
+    $34 constant REG_TEOFF
+    $35 constant REG_TEON
+    $36 constant REG_MADCTL
+    $3A constant REG_COLMOD
+    $B7 constant REG_GCTRL
+    $BB constant REG_VCOMS
+    $C0 constant REG_LCMCTRL
+    $C2 constant REG_VDVVRHEN
+    $C3 constant REG_VRHS
+    $C4 constant REG_VDVS
+    $C6 constant REG_FRCTRL2
+    $D0 constant REG_PWCTRL1
+    $B2 constant REG_PORCTRL
+    $E0 constant REG_GMCTRP1
+    $E1 constant REG_GMCTRN1
+    $20 constant REG_INVOFF
+    $11 constant REG_SLPOUT
+    $29 constant REG_DISPON
+    $26 constant REG_GAMSET
+    $28 constant REG_DISPOFF
+    $2C constant REG_RAMWR
+    $21 constant REG_INVON
+    $2A constant REG_CASET
+    $2B constant REG_RASET
+    $CC constant REG_PWMFRSEL
 
     $10 constant REG_SLPIN  \  ///< Enter Sleep Mode
     $11 constant REG_SLPOUT  \ ///< Sleep Out
@@ -124,65 +145,65 @@ begin-module ili9341-text-common
     
   end-module> import
   
-  <text8> begin-class <ili9341-text-common>
+  <text8> begin-class <st7796s-text-common>
 
-    continue-module ili9341-text-common-internal
+    continue-module st7796s-text-common-internal
 
       \ The font
-      cell member ili9341-text-font
+      cell member st7796s-text-font
 
       \ The physical number of columns
-      cell member ili9341-text-phys-cols
+      cell member st7796s-text-phys-cols
       
       \ The physical number of rows
-      cell member ili9341-text-phys-rows
+      cell member st7796s-text-phys-rows
 
       \ Column offset
-      cell member ili9341-text-col-offset
+      cell member st7796s-text-col-offset
 
       \ Row offset
-      cell member ili9341-text-row-offset
+      cell member st7796s-text-row-offset
 
       \ DC pin
-      cell member ili9341-text-dc-pin
+      cell member st7796s-text-dc-pin
 
       \ CS pin
-      cell member ili9341-text-cs-pin
+      cell member st7796s-text-cs-pin
 
       \ Backlight pin
-      cell member ili9341-text-backlight-pin
+      cell member st7796s-text-backlight-pin
 
       \ Dirty rectangle start column
-      cell member ili9341-text-dirty-start-col
+      cell member st7796s-text-dirty-start-col
 
       \ Dirty rectangle end column
-      cell member ili9341-text-dirty-end-col
+      cell member st7796s-text-dirty-end-col
 
       \ Dirty rectangle start row
-      cell member ili9341-text-dirty-start-row
+      cell member st7796s-text-dirty-start-row
 
       \ Dirty rectangle end row
-      cell member ili9341-text-dirty-end-row
+      cell member st7796s-text-dirty-end-row
 
-      \ Initialize the ILI9341-text
-      method init-ili9341-text ( self -- )
+      \ Initialize the ST7796S-text
+      method init-st7796s-text ( self -- )
 
       \ Write blocking data
-      method >ili9341-text ( addr count self -- )
+      method >st7796s-text ( addr count self -- )
 
-      \ Send a command to the ILI9341-text
-      method cmd>ili9341-text ( cmd self -- )
+      \ Send a command to the ST7796S-text
+      method cmd>st7796s-text ( cmd self -- )
 
-      \ Send a command with arguments to the ILI9341-text
-      method cmd-args>ili9341-text ( cmd addr count self -- )
+      \ Send a command with arguments to the ST7796S-text
+      method cmd-args>st7796s-text ( cmd addr count self -- )
 
-      \ Send a byte of data to the ILI9341-text
-      method data>ili9341-text ( data self -- )
+      \ Send a byte of data to the ST7796S-text
+      method data>st7796s-text ( data self -- )
 
-      \ Set the ILI9341-text window
-      method ili9341-text-window! ( start-col end-col start-row end-row self -- )
+      \ Set the ST7796S-text window
+      method st7796s-text-window! ( start-col end-col start-row end-row self -- )
 
-      \ Update a rectangular space on the ILI9341 device
+      \ Update a rectangular space on the ST7796S device
       method update-area ( start-col end-col start-row end-row self -- )
 
       \ Populate a row
@@ -196,27 +217,27 @@ begin-module ili9341-text-common
     \ Set the backlight (this may be a no-op)
     method backlight! ( backlight self -- )
 
-    \ Update the ILI9341-text device
+    \ Update the ST7796S-text device
     method update-display ( self -- )
 
-    \ Clear the ILI9341-text device
+    \ Clear the ST7796S-text device
     method clear-display ( self -- )
     
   end-class
 
-  <ili9341-text-common> begin-implement
+  <st7796s-text-common> begin-implement
 
     \ Constructor
     :noname { dc cs backlight the-font buf cols rows phys-cols phys-rows self -- }
       buf cols rows self <text8>->new
-      phys-cols self ili9341-text-phys-cols !
-      phys-rows self ili9341-text-phys-rows !
-      the-font self ili9341-text-font !
-      backlight self ili9341-text-backlight-pin !
-      dc self ili9341-text-dc-pin !
-      cs self ili9341-text-cs-pin !
-      0 self ili9341-text-col-offset !
-      0 self ili9341-text-row-offset !
+      phys-cols self st7796s-text-phys-cols !
+      phys-rows self st7796s-text-phys-rows !
+      the-font self st7796s-text-font !
+      backlight self st7796s-text-backlight-pin !
+      dc self st7796s-text-dc-pin !
+      cs self st7796s-text-cs-pin !
+      0 self st7796s-text-col-offset !
+      0 self st7796s-text-row-offset !
       dc output-pin
       cs output-pin
       backlight output-pin
@@ -231,144 +252,131 @@ begin-module ili9341-text-common
       self <object>->destroy
     ; define destroy
     
-    \ Initialize the ILI9341-text
+    \ Initialize the ST7796S-text
     :noname { self -- }
-      REG_SWRESET self cmd>ili9341-text
+      REG_SWRESET self cmd>st7796s-text
 
       150 ms
 
-      REG_SLPOUT self cmd>ili9341-text
+      REG_SLPOUT self cmd>st7796s-text
 
       500 ms
 
-      $EF s\" \x03\x80\x02" self cmd-args>ili9341-text
-      $EF s\" \x03\x80\x02" self cmd-args>ili9341-text
-      $CF s\" \x00\xC1\x30" self cmd-args>ili9341-text
-      $ED s\" \x64\x03\x12\x81" self cmd-args>ili9341-text
-      $E8 s\" \x85\x00\x78" self cmd-args>ili9341-text
-      $CB s\" \x39\x2C\x00\x34\x02" self cmd-args>ili9341-text
-      $F7 s\" \x20" self cmd-args>ili9341-text
-      $EA s\" \x00\x00" self cmd-args>ili9341-text
-      REG_PWCTR1   s\" \x23" self cmd-args>ili9341-text             \ Power control VRH[5:0]
-      REG_PWCTR2   s\" \x10" self cmd-args>ili9341-text             \ Power control SAP[2:0];BT[3:0]
-      REG_VMCTR1   s\" \x3e\x28" self cmd-args>ili9341-text       \ VCM control
-      REG_VMCTR2   s\" \x86" self cmd-args>ili9341-text             \ VCM control2
+      $EF s\" \x03\x80\x02" self cmd-args>st7796s-text
+      $EF s\" \x03\x80\x02" self cmd-args>st7796s-text
+      $CF s\" \x00\xC1\x30" self cmd-args>st7796s-text
+      $ED s\" \x64\x03\x12\x81" self cmd-args>st7796s-text
+      $E8 s\" \x85\x00\x78" self cmd-args>st7796s-text
+      $CB s\" \x39\x2C\x00\x34\x02" self cmd-args>st7796s-text
+      $F7 s\" \x20" self cmd-args>st7796s-text
+      $EA s\" \x00\x00" self cmd-args>st7796s-text
+      REG_PWCTR1   s\" \x23" self cmd-args>st7796s-text             \ Power control VRH[5:0]
+      REG_PWCTR2   s\" \x10" self cmd-args>st7796s-text             \ Power control SAP[2:0];BT[3:0]
+      REG_VMCTR1   s\" \x3e\x28" self cmd-args>st7796s-text       \ VCM control
+      REG_VMCTR2   s\" \x86" self cmd-args>st7796s-text             \ VCM control2
 
-      self ili9341-text-phys-cols @ { cols }
-      self ili9341-text-phys-rows @ { rows }
+      self st7796s-text-phys-cols @ { cols }
+      self st7796s-text-phys-rows @ { rows }
+      
       0 { W^ madctl }
       
-      rows 320 = cols 240 = and if
+      rows 320 = cols 480 = and if
         \ Rotation 0
-        0 self ili9341-text-col-offset !
-        0 self ili9341-text-row-offset !
-        [ MADCTL_MX MADCTL_BGR or ]
+        0 self st7796s-text-col-offset !
+        0 self st7796s-text-row-offset !
+        [ MADCTL_MX MADCTL_RGB or ]
         literal madctl !
-      else  \ Default to landscape
+      else  \ Portrait
         \ Rotation 1
-        0 self ili9341-text-col-offset !
-        0 self ili9341-text-row-offset !
-        [ MADCTL_MV MADCTL_BGR or ]
+        0 self st7796s-text-col-offset !
+        0 self st7796s-text-row-offset !
+        [ MADCTL_MV MADCTL_RGB or ]
         literal madctl !
       then
 
       \ Rotation 2: (MADCTL_MY | MADCTL_BGR)
       \ Rotation 3: (MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR);
 
-      REG_MADCTL madctl 1 self cmd-args>ili9341-text             \ Memory Access Control
+      REG_MADCTL madctl 1 self cmd-args>st7796s-text             \ Memory Access Control
 
-      REG_VSCRSADD s\" \x00" self cmd-args>ili9341-text             \ Vertical scroll zero
-      REG_PIXFMT   s\" \x55" self cmd-args>ili9341-text
-      REG_FRMCTR1  s\" \x00\x18" self cmd-args>ili9341-text
-      REG_DFUNCTR  s\" \x08\x82\x27" self cmd-args>ili9341-text \ Display Function Control
-      $F2 s\" \x00" self cmd-args>ili9341-text                         \ 3Gamma Function Disable
-      REG_GAMMASET  s\" \x01" self cmd-args>ili9341-text             \ Gamma curve selected
-      REG_GMCTRP1  s\" \x0F\x31\x2B\x0C\x0E\x08\x4E\xF1\x37\x07\x10\x03\x0E\x09\x00" self cmd-args>ili9341-text \ Set Gamma
-      REG_GMCTRN1  s\" \x00\x0E\x14\x03\x11\x07\x31\xC1\x48\x08\x0F\x0C\x31\x36\x0F" self cmd-args>ili9341-text \ Set Gamma
-      REG_SLPOUT  self cmd>ili9341-text \ Exit Sleep
+      REG_VSCRSADD s\" \x00" self cmd-args>st7796s-text             \ Vertical scroll zero
+      REG_PIXFMT   s\" \x55" self cmd-args>st7796s-text
+      REG_FRMCTR1  s\" \x00\x18" self cmd-args>st7796s-text
+      REG_DFUNCTR  s\" \x80\x02\x3B" self cmd-args>st7796s-text \ Display Function Control
+      $F2 s\" \x00" self cmd-args>st7796s-text                         \ 3Gamma Function Disable
+      REG_GAMMASET  s\" \x01" self cmd-args>st7796s-text             \ Gamma curve selected
+      REG_GMCTRP1  s\" \x0F\x31\x2B\x0C\x0E\x08\x4E\xF1\x37\x07\x10\x03\x0E\x09\x00" self cmd-args>st7796s-text \ Set Gamma
+      REG_GMCTRN1  s\" \x00\x0E\x14\x03\x11\x07\x31\xC1\x48\x08\x0F\x0C\x31\x36\x0F" self cmd-args>st7796s-text \ Set Gamma
+      REG_SLPOUT  self cmd>st7796s-text \ Exit Sleep
       120 ms
-      REG_DISPON  self cmd>ili9341-text \ Display on
+      REG_DISPON  self cmd>st7796s-text \ Display on
       120 ms
       \ $00         \ NOP, End of list
 
-      self char-dim@ { char-cols char-rows }
-      self dim@ { cols rows }
-      0 char-cols cols * 0 char-rows rows * self ili9341-text-window!
-
-      \ This may be a no-op
       true self backlight!
-      
-    ; define init-ili9341-text
+    ; define init-st7796s-text
 
-    \ Send a command to the ILI9341-text
+    \ Send a command to the ST7796S-text
     :noname { W^ cmd self -- }
-      low self ili9341-text-dc-pin @ pin!
-      low self ili9341-text-cs-pin @ pin!
-      cmd 1 self >ili9341-text
-      high self ili9341-text-cs-pin @ pin!
-    ; define cmd>ili9341-text
+      low self st7796s-text-dc-pin @ pin!
+      low self st7796s-text-cs-pin @ pin!
+      cmd 1 self >st7796s-text
+      high self st7796s-text-cs-pin @ pin!
+    ; define cmd>st7796s-text
 
-    \ Send 8 bits of data to the ILI9341-text
-    :noname { W^ data self -- }
-      high self ili9341-text-dc-pin @ pin!
-      low self ili9341-text-cs-pin @ pin!
-      data 1 self >ili9341-text
-      high self ili9341-text-cs-pin @ pin!
-    ; define data>ili9341-text
-
-    \ Send a command with arguments to the ILI9341-text
+    \ Send a command with arguments to the ST7796S-text
     :noname { W^ cmd addr count self -- }
-      low self ili9341-text-dc-pin @ pin!
-      low self ili9341-text-cs-pin @ pin!
-      cmd 1 self >ili9341-text
-      high self ili9341-text-dc-pin @ pin!
-      addr count self >ili9341-text
-      high self ili9341-text-cs-pin @ pin!
-    ; define cmd-args>ili9341-text
+      low self st7796s-text-dc-pin @ pin!
+      low self st7796s-text-cs-pin @ pin!
+      cmd 1 self >st7796s-text
+      high self st7796s-text-dc-pin @ pin!
+      addr count self >st7796s-text
+      high self st7796s-text-cs-pin @ pin!
+    ; define cmd-args>st7796s-text
 
     \ Set the entire display to be dirty
     :noname { self -- }
       self dim@ { cols rows }
-      0 self ili9341-text-dirty-start-col !
-      cols self ili9341-text-dirty-end-col !
-      0 self ili9341-text-dirty-start-row !
-      rows self ili9341-text-dirty-end-row !
+      0 self st7796s-text-dirty-start-col !
+      cols self st7796s-text-dirty-end-col !
+      0 self st7796s-text-dirty-start-row !
+      rows self st7796s-text-dirty-end-row !
     ; define set-dirty
 
     \ Clear dirty rectangle
     :noname { self -- }
-      0 self ili9341-text-dirty-start-col !
-      0 self ili9341-text-dirty-end-col !
-      0 self ili9341-text-dirty-start-row !
-      0 self ili9341-text-dirty-end-row !
+      0 self st7796s-text-dirty-start-col !
+      0 self st7796s-text-dirty-end-col !
+      0 self st7796s-text-dirty-start-row !
+      0 self st7796s-text-dirty-end-row !
     ; define clear-dirty
     
-    \ Get whether an ILI9341-text device is dirty
+    \ Get whether an ST7796S-text device is dirty
     :noname { self -- dirty? }
-      self ili9341-text-dirty-start-col @ self ili9341-text-dirty-end-col @ <>
-      self ili9341-text-dirty-start-row @ self ili9341-text-dirty-end-row @ <> and
+      self st7796s-text-dirty-start-col @ self st7796s-text-dirty-end-col @ <>
+      self st7796s-text-dirty-start-row @ self st7796s-text-dirty-end-row @ <> and
     ; define dirty?
   
-    \ Dirty a character on an ILI9341-text device
+    \ Dirty a character on an ST7796S-text device
     :noname { col row self -- }
       self dirty? if
-        row self ili9341-text-dirty-start-row @ min
-        self ili9341-text-dirty-start-row !
-        row 1+ self ili9341-text-dirty-end-row @ max
-        self ili9341-text-dirty-end-row !
-        col self ili9341-text-dirty-start-col @ min
-        self ili9341-text-dirty-start-col !
-        col 1+ self ili9341-text-dirty-end-col @ max
-        self ili9341-text-dirty-end-col !
+        row self st7796s-text-dirty-start-row @ min
+        self st7796s-text-dirty-start-row !
+        row 1+ self st7796s-text-dirty-end-row @ max
+        self st7796s-text-dirty-end-row !
+        col self st7796s-text-dirty-start-col @ min
+        self st7796s-text-dirty-start-col !
+        col 1+ self st7796s-text-dirty-end-col @ max
+        self st7796s-text-dirty-end-col !
       else
-        row self ili9341-text-dirty-start-row !
-        row 1+ self ili9341-text-dirty-end-row !
-        col self ili9341-text-dirty-start-col !
-        col 1+ self ili9341-text-dirty-end-col !
+        row self st7796s-text-dirty-start-row !
+        row 1+ self st7796s-text-dirty-end-row !
+        col self st7796s-text-dirty-start-col !
+        col 1+ self st7796s-text-dirty-end-col !
       then
     ; define dirty-char
 
-    \ Dirty an area on an ILI9341-text device
+    \ Dirty an area on an ST7796S-text device
     :noname { start-col end-col start-row end-row self -- }
       start-col end-col < start-row end-row < and if
         start-col start-row self dirty-char
@@ -376,12 +384,12 @@ begin-module ili9341-text-common
       then
     ; define dirty-area
     
-    \ Set the ILI9341-text window
+    \ Set the ST7796S-text window
     :noname { start-col end-col start-row end-row self -- }
-      self ili9341-text-col-offset @ +to start-col
-      self ili9341-text-col-offset @ 1- +to end-col
-      self ili9341-text-row-offset @ +to start-row
-      self ili9341-text-row-offset @ 1- +to end-row
+      self st7796s-text-col-offset @ +to start-col
+      self st7796s-text-col-offset @ 1- +to end-col
+      self st7796s-text-row-offset @ +to start-row
+      self st7796s-text-row-offset @ 1- +to end-row
       0 0 { W^ col-values W^ row-values }
       start-col 8 rshift col-values c!
       start-col col-values 1 + c!
@@ -391,37 +399,37 @@ begin-module ili9341-text-common
       start-row row-values 1 + c!
       end-row 8 rshift row-values 2 + c!
       end-row row-values 3 + c!
-      REG_CASET col-values 4 self cmd-args>ili9341-text
-      REG_PASET row-values 4 self cmd-args>ili9341-text
+      REG_CASET col-values 4 self cmd-args>st7796s-text
+      REG_RASET row-values 4 self cmd-args>st7796s-text
 
-    ; define ili9341-text-window!
+    ; define st7796s-text-window!
 
-    \ Update a rectangular space on the ILI9341 device
+    \ Update a rectangular space on the ST7796S device
     :noname { start-col end-col start-row end-row self -- }
       self char-dim@ { char-cols char-rows }
       start-col char-cols * to start-col
       end-col char-cols * to end-col
       start-row char-rows * to start-row
       end-row char-rows * to end-row
-      start-col end-col start-row end-row self ili9341-text-window!
-      low self ili9341-text-dc-pin @ pin!
-      low self ili9341-text-cs-pin @ pin!
+      start-col end-col start-row end-row self st7796s-text-window!
+      low self st7796s-text-dc-pin @ pin!
+      low self st7796s-text-cs-pin @ pin!
       REG_RAMWR { W^ cmd }
-      cmd 1 self >ili9341-text
-      high self ili9341-text-dc-pin @ pin!
+      cmd 1 self >st7796s-text
+      high self st7796s-text-dc-pin @ pin!
       end-row start-row ?do
         self start-col i end-col start-col - dup 1 lshift [:
           { self start-col row cols line-buf }
           start-col row cols line-buf self populate-row
-          line-buf cols 1 lshift self >ili9341-text
+          line-buf cols 1 lshift self >st7796s-text
         ;] with-aligned-allot
       loop
-      high self ili9341-text-cs-pin @ pin!
+      high self st7796s-text-cs-pin @ pin!
     ; define update-area
     
     \ Populate a row
     :noname { start-col row cols line-buf self -- }
-      self ili9341-text-font @ { the-font }
+      self st7796s-text-font @ { the-font }
       self dim@ { text-cols text-rows }
       self char-dim@ { char-cols char-rows }
       row char-rows u/mod { font-row text-row }
@@ -481,41 +489,41 @@ begin-module ili9341-text-common
       then
     ; define populate-row
 
-    \ Clear the ILI9341-text device
+    \ Clear the ST7796S-text device
     :noname { self -- }
-      self ili9341-text-phys-cols @ { cols }
-      self ili9341-text-phys-rows @ { rows }
-      0 cols 0 rows self ili9341-text-window!
-      low self ili9341-text-dc-pin @ pin!
-      low self ili9341-text-cs-pin @ pin!
+      self st7796s-text-phys-cols @ { cols }
+      self st7796s-text-phys-rows @ { rows }
+      0 cols 0 rows self st7796s-text-window!
+      low self st7796s-text-dc-pin @ pin!
+      low self st7796s-text-cs-pin @ pin!
       REG_RAMWR { W^ cmd }
-      cmd 1 self >ili9341-text
-      high self ili9341-text-dc-pin @ pin!
+      cmd 1 self >st7796s-text
+      high self st7796s-text-dc-pin @ pin!
       self rows cols dup 1 lshift [: { self rows cols line-buf }
         line-buf cols 1 lshift 0 fill
-        rows 0 ?do line-buf cols 1 lshift self >ili9341-text loop
+        rows 0 ?do line-buf cols 1 lshift self >st7796s-text loop
       ;] with-allot
-      high self ili9341-text-cs-pin @ pin!
+      high self st7796s-text-cs-pin @ pin!
     ; define clear-display
 
     \ Get the character dimensions
     :noname { self -- cols rows }
-      self ili9341-text-font @ { the-font }
+      self st7796s-text-font @ { the-font }
       the-font char-cols @ the-font char-rows @
     ; define char-dim@
 
-    \ Set the backlight
+    \ Set the backlight (this may be a no-op)
     :noname { backlight self -- }
-      backlight self ili9341-text-backlight-pin @ pin!
+      backlight self st7796s-text-backlight-pin @ pin!
     ; define backlight!
 
-    \ Update the ILI9341 device
+    \ Update the ST7796S device
     :noname { self -- }
       self dirty? if 
-        self ili9341-text-dirty-start-col @
-        self ili9341-text-dirty-end-col @
-        self ili9341-text-dirty-start-row @
-        self ili9341-text-dirty-end-row @
+        self st7796s-text-dirty-start-col @
+        self st7796s-text-dirty-end-col @
+        self st7796s-text-dirty-start-row @
+        self st7796s-text-dirty-end-row @
         self update-area
         self clear-dirty
       then

@@ -20,10 +20,10 @@
 \ SOFTWARE.
 
 \ Drawn from:
-\ * https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf
-\ * https://github.com/adafruit/Adafruit_ILI9341
+\ * https://www.displayfuture.com/Display/datasheet/controller/ST7796s.pdf
+\ * https://github.com/adafruit/Adafruit-ST7735-Library/blob/master/Adafruit_ST7796S.cpp
 
-begin-module ili9341-8-common
+begin-module st7796s-8-common
 
   oo import
   pixmap8 import
@@ -31,22 +31,43 @@ begin-module ili9341-8-common
   pin import
   armv6m import
 
-  begin-module ili9341-8-common-internal
+  begin-module st7796s-8-common-internal
 
-    \ ILI9341 MADCTL
-    $80 constant MADCTL_MY \  ///< Bottom to top
-    $40 constant MADCTL_MX \  ///< Right to left
-    $20 constant MADCTL_MV \  ///< Reverse Mode
-    $10 constant MADCTL_ML \  ///< LCD refresh Bottom to top
-    $00 constant MADCTL_RGB \ ///< Red-Green-Blue pixel order
-    $08 constant MADCTL_BGR \ ///< Blue-Green-Red pixel order
-    $04 constant MADCTL_MH \  ///< LCD refresh right to left
+    \ ST7796S MADCTL bits
+    $80 constant MADCTL_MY
+    $40 constant MADCTL_MX
+    $20 constant MADCTL_MV
+    $10 constant MADCTL_ML
+    $08 constant MADCTL_BGR
+    $00 constant MADCTL_RGB
 
-    \ ILI9341 registers
-    $00 constant REG_NOP  \     ///< No-op register
-    $01 constant REG_SWRESET  \ ///< Software reset register
-    $04 constant REG_RDDID  \   ///< Read display identification information
-    $09 constant REG_RDDST  \   ///< Read Display Status
+    \ ST7796S registers
+    $01 constant REG_SWRESET
+    $34 constant REG_TEOFF
+    $35 constant REG_TEON
+    $36 constant REG_MADCTL
+    $3A constant REG_COLMOD
+    $B7 constant REG_GCTRL
+    $BB constant REG_VCOMS
+    $C0 constant REG_LCMCTRL
+    $C2 constant REG_VDVVRHEN
+    $C3 constant REG_VRHS
+    $C4 constant REG_VDVS
+    $C6 constant REG_FRCTRL2
+    $D0 constant REG_PWCTRL1
+    $B2 constant REG_PORCTRL
+    $E0 constant REG_GMCTRP1
+    $E1 constant REG_GMCTRN1
+    $20 constant REG_INVOFF
+    $11 constant REG_SLPOUT
+    $29 constant REG_DISPON
+    $26 constant REG_GAMSET
+    $28 constant REG_DISPOFF
+    $2C constant REG_RAMWR
+    $21 constant REG_INVON
+    $2A constant REG_CASET
+    $2B constant REG_RASET
+    $CC constant REG_PWMFRSEL
 
     $10 constant REG_SLPIN  \  ///< Enter Sleep Mode
     $11 constant REG_SLPOUT  \ ///< Sleep Out
@@ -149,56 +170,56 @@ begin-module ili9341-8-common
     
   end-module> import
   
-  <pixmap8> begin-class <ili9341-8-common>
+  <pixmap8> begin-class <st7796s-8-common>
 
-    continue-module ili9341-8-common-internal
+    continue-module st7796s-8-common-internal
       
       \ Column offset
-      cell member ili9341-8-col-offset
+      cell member st7796s-8-col-offset
 
       \ Row offset
-      cell member ili9341-8-row-offset
+      cell member st7796s-8-row-offset
 
       \ DC pin
-      cell member ili9341-8-dc-pin
+      cell member st7796s-8-dc-pin
 
       \ CS pin
-      cell member ili9341-8-cs-pin
+      cell member st7796s-8-cs-pin
 
       \ Backlight pin
-      cell member ili9341-8-backlight-pin
+      cell member st7796s-8-backlight-pin
 
       \ Dirty rectangle start column
-      cell member ili9341-8-dirty-start-col
+      cell member st7796s-8-dirty-start-col
 
       \ Dirty rectangle end column
-      cell member ili9341-8-dirty-end-col
+      cell member st7796s-8-dirty-end-col
 
       \ Dirty rectangle start row
-      cell member ili9341-8-dirty-start-row
+      cell member st7796s-8-dirty-start-row
 
       \ Dirty rectangle end row
-      cell member ili9341-8-dirty-end-row
+      cell member st7796s-8-dirty-end-row
 
-      \ Initialize the ILI9341-8
-      method init-ili9341-8 ( self -- )
+      \ Initialize the ST7796S-8
+      method init-st7796s-8 ( self -- )
 
       \ Write blocking data
-      method >ili9341-8 ( addr count self -- )
+      method >st7796s-8 ( addr count self -- )
 
-      \ Send a command to the ILI9341-8
-      method cmd>ili9341-8 ( cmd self -- )
+      \ Send a command to the ST7796S-8
+      method cmd>st7796s-8 ( cmd self -- )
 
-      \ Send a command with arguments to the ILI9341-8
-      method cmd-args>ili9341-8 ( cmd addr count self -- )
+      \ Send a command with arguments to the ST7796S-8
+      method cmd-args>st7796s-8 ( cmd addr count self -- )
 
-      \ Send a byte of data to the ILI9341-8
-      method data>ili9341-8 ( data self -- )
+      \ Send a byte of data to the ST7796S-8
+      method data>st7796s-8 ( data self -- )
 
-      \ Set the ILI9341-8 window
-      method ili9341-8-window! ( start-col end-col start-row end-row self -- )
+      \ Set the ST7796S-8 window
+      method st7796s-8-window! ( start-col end-col start-row end-row self -- )
 
-      \ Update a rectangular space on the ILI9341 device
+      \ Update a rectangular space on the ST7796S device
       method update-area ( start-col end-col start-row end-row self -- )
       
     end-module
@@ -206,21 +227,21 @@ begin-module ili9341-8-common
     \ Set the backlight (this may be a no-op)
     method backlight! ( backlight self -- )
 
-    \ Update the ILI9341-8 device
+    \ Update the ST7796S-8 device
     method update-display ( self -- )
     
   end-class
 
-  <ili9341-8-common> begin-implement
+  <st7796s-8-common> begin-implement
 
     \ Constructor
     :noname { dc cs backlight buf cols rows self -- }
       buf cols rows self <pixmap8>->new
-      backlight self ili9341-8-backlight-pin !
-      dc self ili9341-8-dc-pin !
-      cs self ili9341-8-cs-pin !
-      0 self ili9341-8-col-offset !
-      0 self ili9341-8-row-offset !
+      backlight self st7796s-8-backlight-pin !
+      dc self st7796s-8-dc-pin !
+      cs self st7796s-8-cs-pin !
+      0 self st7796s-8-col-offset !
+      0 self st7796s-8-row-offset !
       dc output-pin
       cs output-pin
       backlight output-pin
@@ -235,141 +256,141 @@ begin-module ili9341-8-common
       self <object>->destroy
     ; define destroy
     
-    \ Initialize the ILI9341-8
+    \ Initialize the ST7796S-8
     :noname { self -- }
-      REG_SWRESET self cmd>ili9341-8
+      REG_SWRESET self cmd>st7796s-8
 
       150 ms
 
-      REG_SLPOUT self cmd>ili9341-8
+      REG_SLPOUT self cmd>st7796s-8
 
       500 ms
 
-      $EF s\" \x03\x80\x02" self cmd-args>ili9341-8
-      $EF s\" \x03\x80\x02" self cmd-args>ili9341-8
-      $CF s\" \x00\xC1\x30" self cmd-args>ili9341-8
-      $ED s\" \x64\x03\x12\x81" self cmd-args>ili9341-8
-      $E8 s\" \x85\x00\x78" self cmd-args>ili9341-8
-      $CB s\" \x39\x2C\x00\x34\x02" self cmd-args>ili9341-8
-      $F7 s\" \x20" self cmd-args>ili9341-8
-      $EA s\" \x00\x00" self cmd-args>ili9341-8
-      REG_PWCTR1   s\" \x23" self cmd-args>ili9341-8             \ Power control VRH[5:0]
-      REG_PWCTR2   s\" \x10" self cmd-args>ili9341-8             \ Power control SAP[2:0];BT[3:0]
-      REG_VMCTR1   s\" \x3e\x28" self cmd-args>ili9341-8       \ VCM control
-      REG_VMCTR2   s\" \x86" self cmd-args>ili9341-8             \ VCM control2
+      $EF s\" \x03\x80\x02" self cmd-args>st7796s-8
+      $EF s\" \x03\x80\x02" self cmd-args>st7796s-8
+      $CF s\" \x00\xC1\x30" self cmd-args>st7796s-8
+      $ED s\" \x64\x03\x12\x81" self cmd-args>st7796s-8
+      $E8 s\" \x85\x00\x78" self cmd-args>st7796s-8
+      $CB s\" \x39\x2C\x00\x34\x02" self cmd-args>st7796s-8
+      $F7 s\" \x20" self cmd-args>st7796s-8
+      $EA s\" \x00\x00" self cmd-args>st7796s-8
+      REG_PWCTR1   s\" \x23" self cmd-args>st7796s-8             \ Power control VRH[5:0]
+      REG_PWCTR2   s\" \x10" self cmd-args>st7796s-8             \ Power control SAP[2:0];BT[3:0]
+      REG_VMCTR1   s\" \x3e\x28" self cmd-args>st7796s-8       \ VCM control
+      REG_VMCTR2   s\" \x86" self cmd-args>st7796s-8             \ VCM control2
 
       self dim@ { cols rows }
       0 { W^ madctl }
       
-      rows 320 = cols 240 = and if
+      rows 320 = cols 480 = and if
         \ Rotation 0
-        0 self ili9341-8-col-offset !
-        0 self ili9341-8-row-offset !
-        [ MADCTL_MX MADCTL_BGR or ]
+        0 self st7796s-8-col-offset !
+        0 self st7796s-8-row-offset !
+        [ MADCTL_MX MADCTL_RGB or ]
         literal madctl !
-      else  \ Default to landscape
+      else  \ Portrait
         \ Rotation 1
-        0 self ili9341-8-col-offset !
-        0 self ili9341-8-row-offset !
-        [ MADCTL_MV MADCTL_BGR or ]
+        0 self st7796s-8-col-offset !
+        0 self st7796s-8-row-offset !
+        [ MADCTL_MV MADCTL_RGB or ]
         literal madctl !
       then
 
       \ Rotation 2: (MADCTL_MY | MADCTL_BGR)
       \ Rotation 3: (MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR);
 
-      REG_MADCTL madctl 1 self cmd-args>ili9341-8             \ Memory Access Control
+      REG_MADCTL madctl 1 self cmd-args>st7796s-8             \ Memory Access Control
 
-      REG_VSCRSADD s\" \x00" self cmd-args>ili9341-8             \ Vertical scroll zero
-      REG_PIXFMT   s\" \x55" self cmd-args>ili9341-8
-      REG_FRMCTR1  s\" \x00\x18" self cmd-args>ili9341-8
-      REG_DFUNCTR  s\" \x08\x82\x27" self cmd-args>ili9341-8 \ Display Function Control
-      $F2 s\" \x00" self cmd-args>ili9341-8                         \ 3Gamma Function Disable
-      REG_GAMMASET  s\" \x01" self cmd-args>ili9341-8             \ Gamma curve selected
-      REG_GMCTRP1  s\" \x0F\x31\x2B\x0C\x0E\x08\x4E\xF1\x37\x07\x10\x03\x0E\x09\x00" self cmd-args>ili9341-8 \ Set Gamma
-      REG_GMCTRN1  s\" \x00\x0E\x14\x03\x11\x07\x31\xC1\x48\x08\x0F\x0C\x31\x36\x0F" self cmd-args>ili9341-8 \ Set Gamma
-      REG_SLPOUT  self cmd>ili9341-8 \ Exit Sleep
+      REG_VSCRSADD s\" \x00" self cmd-args>st7796s-8             \ Vertical scroll zero
+      REG_PIXFMT   s\" \x55" self cmd-args>st7796s-8
+      REG_FRMCTR1  s\" \x00\x18" self cmd-args>st7796s-8
+      REG_DFUNCTR  s\" \x80\x02\x3B" self cmd-args>st7796s-8 \ Display Function Control
+      $F2 s\" \x00" self cmd-args>st7796s-8                         \ 3Gamma Function Disable
+      REG_GAMMASET  s\" \x01" self cmd-args>st7796s-8             \ Gamma curve selected
+      REG_GMCTRP1  s\" \x0F\x31\x2B\x0C\x0E\x08\x4E\xF1\x37\x07\x10\x03\x0E\x09\x00" self cmd-args>st7796s-8 \ Set Gamma
+      REG_GMCTRN1  s\" \x00\x0E\x14\x03\x11\x07\x31\xC1\x48\x08\x0F\x0C\x31\x36\x0F" self cmd-args>st7796s-8 \ Set Gamma
+      REG_SLPOUT  self cmd>st7796s-8 \ Exit Sleep
       120 ms
-      REG_DISPON  self cmd>ili9341-8 \ Display on
+      REG_DISPON  self cmd>st7796s-8 \ Display on
       120 ms
       \ $00         \ NOP, End of list
 
       self dim@ { cols rows }
-      0 cols 0 rows self ili9341-8-window!
+      0 cols 0 rows self st7796s-8-window!
 
       \ This may be a no-op
       true self backlight!
       
-    ; define init-ili9341-8
+    ; define init-st7796s-8
 
-    \ Send a command to the ILI9341-8
+    \ Send a command to the ST7796S-8
     :noname { W^ cmd self -- }
-      low self ili9341-8-dc-pin @ pin!
-      low self ili9341-8-cs-pin @ pin!
-      cmd 1 self >ili9341-8
-      high self ili9341-8-cs-pin @ pin!
-    ; define cmd>ili9341-8
+      low self st7796s-8-dc-pin @ pin!
+      low self st7796s-8-cs-pin @ pin!
+      cmd 1 self >st7796s-8
+      high self st7796s-8-cs-pin @ pin!
+    ; define cmd>st7796s-8
 
-    \ Send 8 bits of data to the ILI9341-8
+    \ Send 8 bits of data to the ST7796S-8
     :noname { W^ data self -- }
-      high self ili9341-8-dc-pin @ pin!
-      low self ili9341-8-cs-pin @ pin!
-      data 1 self >ili9341-8
-      high self ili9341-8-cs-pin @ pin!
-    ; define data>ili9341-8
+      high self st7796s-8-dc-pin @ pin!
+      low self st7796s-8-cs-pin @ pin!
+      data 1 self >st7796s-8
+      high self st7796s-8-cs-pin @ pin!
+    ; define data>st7796s-8
 
-    \ Send a command with arguments to the ILI9341-8
+    \ Send a command with arguments to the ST7796S-8
     :noname { W^ cmd addr count self -- }
-      low self ili9341-8-dc-pin @ pin!
-      low self ili9341-8-cs-pin @ pin!
-      cmd 1 self >ili9341-8
-      high self ili9341-8-dc-pin @ pin!
-      addr count self >ili9341-8
-      high self ili9341-8-cs-pin @ pin!
-    ; define cmd-args>ili9341-8
+      low self st7796s-8-dc-pin @ pin!
+      low self st7796s-8-cs-pin @ pin!
+      cmd 1 self >st7796s-8
+      high self st7796s-8-dc-pin @ pin!
+      addr count self >st7796s-8
+      high self st7796s-8-cs-pin @ pin!
+    ; define cmd-args>st7796s-8
 
     \ Set the entire display to be dirty
     :noname { self -- }
-      0 self ili9341-8-dirty-start-col !
-      self pixmap-cols @ self ili9341-8-dirty-end-col !
-      0 self ili9341-8-dirty-start-row !
-      self pixmap-rows @ self ili9341-8-dirty-end-row !
+      0 self st7796s-8-dirty-start-col !
+      self pixmap-cols @ self st7796s-8-dirty-end-col !
+      0 self st7796s-8-dirty-start-row !
+      self pixmap-rows @ self st7796s-8-dirty-end-row !
     ; define set-dirty
 
     \ Clear dirty rectangle
     :noname { self -- }
-      0 self ili9341-8-dirty-start-col !
-      0 self ili9341-8-dirty-end-col !
-      0 self ili9341-8-dirty-start-row !
-      0 self ili9341-8-dirty-end-row !
+      0 self st7796s-8-dirty-start-col !
+      0 self st7796s-8-dirty-end-col !
+      0 self st7796s-8-dirty-start-row !
+      0 self st7796s-8-dirty-end-row !
     ; define clear-dirty
     
-    \ Get whether an ILI9341-8 device is dirty
+    \ Get whether an ST7796S-8 device is dirty
     :noname { self -- dirty? }
-      self ili9341-8-dirty-start-col @ self ili9341-8-dirty-end-col @ <>
-      self ili9341-8-dirty-start-row @ self ili9341-8-dirty-end-row @ <> and
+      self st7796s-8-dirty-start-col @ self st7796s-8-dirty-end-col @ <>
+      self st7796s-8-dirty-start-row @ self st7796s-8-dirty-end-row @ <> and
     ; define dirty?
   
-    \ Dirty a pixel on an ILI9341-8 device
+    \ Dirty a pixel on an ST7796S-8 device
     :noname { col row self -- }
       self dirty? if
-        row self ili9341-8-dirty-start-row @ min
-        self ili9341-8-dirty-start-row !
-        row 1+ self ili9341-8-dirty-end-row @ max
-        self ili9341-8-dirty-end-row !
-        col self ili9341-8-dirty-start-col @ min
-        self ili9341-8-dirty-start-col !
-        col 1+ self ili9341-8-dirty-end-col @ max
-        self ili9341-8-dirty-end-col !
+        row self st7796s-8-dirty-start-row @ min
+        self st7796s-8-dirty-start-row !
+        row 1+ self st7796s-8-dirty-end-row @ max
+        self st7796s-8-dirty-end-row !
+        col self st7796s-8-dirty-start-col @ min
+        self st7796s-8-dirty-start-col !
+        col 1+ self st7796s-8-dirty-end-col @ max
+        self st7796s-8-dirty-end-col !
       else
-        row self ili9341-8-dirty-start-row !
-        row 1+ self ili9341-8-dirty-end-row !
-        col self ili9341-8-dirty-start-col !
-        col 1+ self ili9341-8-dirty-end-col !
+        row self st7796s-8-dirty-start-row !
+        row 1+ self st7796s-8-dirty-end-row !
+        col self st7796s-8-dirty-start-col !
+        col 1+ self st7796s-8-dirty-end-col !
       then
     ; define dirty-pixel
 
-    \ Dirty an area on an ILI9341-8 device
+    \ Dirty an area on an ST7796S-8 device
     :noname { start-col end-col start-row end-row self -- }
       start-col end-col < start-row end-row < and if
         start-col start-row self dirty-pixel
@@ -377,12 +398,12 @@ begin-module ili9341-8-common
       then
     ; define dirty-area
     
-    \ Set the ILI9341-8 window
+    \ Set the ST7796S-8 window
     :noname { start-col end-col start-row end-row self -- }
-      self ili9341-8-col-offset @ +to start-col
-      self ili9341-8-col-offset @ 1- +to end-col
-      self ili9341-8-row-offset @ +to start-row
-      self ili9341-8-row-offset @ 1- +to end-row
+      self st7796s-8-col-offset @ +to start-col
+      self st7796s-8-col-offset @ 1- +to end-col
+      self st7796s-8-row-offset @ +to start-row
+      self st7796s-8-row-offset @ 1- +to end-row
       0 0 { W^ col-values W^ row-values }
       start-col 8 rshift col-values c!
       start-col col-values 1 + c!
@@ -392,40 +413,40 @@ begin-module ili9341-8-common
       start-row row-values 1 + c!
       end-row 8 rshift row-values 2 + c!
       end-row row-values 3 + c!
-      REG_CASET col-values 4 self cmd-args>ili9341-8
-      REG_PASET row-values 4 self cmd-args>ili9341-8  \ Spelled PASET rather than RASET here
-    ; define ili9341-8-window!
+      REG_CASET col-values 4 self cmd-args>st7796s-8
+      REG_RASET row-values 4 self cmd-args>st7796s-8
+    ; define st7796s-8-window!
 
-    \ Update a rectangular space on the ILI9341 device
+    \ Update a rectangular space on the ST7796S device
     :noname { start-col end-col start-row end-row self -- }
-      start-col end-col start-row end-row self ili9341-8-window!
-      low self ili9341-8-dc-pin @ pin!
-      low self ili9341-8-cs-pin @ pin!
+      start-col end-col start-row end-row self st7796s-8-window!
+      low self st7796s-8-dc-pin @ pin!
+      low self st7796s-8-cs-pin @ pin!
       REG_RAMWR { W^ cmd }
-      cmd 1 self >ili9341-8
-      high self ili9341-8-dc-pin @ pin!
+      cmd 1 self >st7796s-8
+      high self st7796s-8-dc-pin @ pin!
       end-row start-row ?do
         self start-col i end-col start-col - dup 1 lshift [:
           { self start-col row cols line-buf }
           start-col row self pixel-addr line-buf cols convert-8-to-16
-          line-buf cols 1 lshift self >ili9341-8
+          line-buf cols 1 lshift self >st7796s-8
         ;] with-aligned-allot
       loop
-      high self ili9341-8-cs-pin @ pin!
+      high self st7796s-8-cs-pin @ pin!
     ; define update-area
 
     \ Set the backlight (this may be a no-op)
     :noname { backlight self -- }
-      backlight self ili9341-8-backlight-pin @ pin!
+      backlight self st7796s-8-backlight-pin @ pin!
     ; define backlight!
 
-    \ Update the ILI9341 device
+    \ Update the ST7796S device
     :noname { self -- }
       self dirty? if 
-        self ili9341-8-dirty-start-col @
-        self ili9341-8-dirty-end-col @
-        self ili9341-8-dirty-start-row @
-        self ili9341-8-dirty-end-row @
+        self st7796s-8-dirty-start-col @
+        self st7796s-8-dirty-end-col @
+        self st7796s-8-dirty-start-row @
+        self st7796s-8-dirty-end-row @
         self update-area
         self clear-dirty
       then
