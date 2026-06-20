@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Copyright (c) 2025 Travis Bemann
+# Copyright (c) 2025-2026 Travis Bemann
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,8 @@ elif [ "$3" = '5x8_v2' ]; then
     FONT='5x8_v2'
 elif [ "$3" = '6x8' ]; then
     FONT='6x8'
+elif [ "$3" = '6x12' ]; then
+    FONT='6x12'
 elif [ "$3" = '7x8' ]; then
     FONT='7x8'
 else
@@ -100,6 +102,7 @@ else
     utils/codeload3.sh -B ${BAUD} -p ${PORT} serial extra/rp_common/picocalc_term.fs
 fi
 if [ ${PLATFORM} != 'rp2040' ]; then
+    utils/codeload3.sh -B ${BAUD} -p ${PORT} serial extra/rp_common/picocalc_keys.fs
     utils/codeload3.sh -B ${BAUD} -p ${PORT} serial extra/common/zeptoed_all.fs
     utils/codeload3.sh -B ${BAUD} -p ${PORT} serial extra/common/transfer_all.fs
     utils/codeload3.sh -B ${BAUD} -p ${PORT} serial extra/common/inter_fs_copy.fs

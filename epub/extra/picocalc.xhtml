@@ -111,6 +111,26 @@
 <p>( – xt )</p>
 <p>Get the screenshot hook. This defaults to 0, indicating no hook set.</p>
 </section>
+<section id="raw-keys-enabled">
+<h3><code class="docutils literal notranslate"><span class="pre">raw-keys-enabled!</span></code></h3>
+<p>( enabled – )</p>
+<p>Set raw keys enabled. This defaults to false. If the raw keys enabled setting changes, the key input queue is cleared.</p>
+</section>
+<section id="id4">
+<h3><code class="docutils literal notranslate"><span class="pre">raw-keys-enabled&#64;</span></code></h3>
+<p>( – enabled )</p>
+<p>Get raw keys enabled. This defaults to false.</p>
+</section>
+<section id="raw-key">
+<h3><code class="docutils literal notranslate"><span class="pre">raw-key&gt;?</span></code></h3>
+<p>( – available )</p>
+<p>Get whether a raw key is available. This always returns false when raw keys are not enabled.</p>
+</section>
+<section id="id5">
+<h3><code class="docutils literal notranslate"><span class="pre">raw-key&gt;</span></code></h3>
+<p>( – attributes key )</p>
+<p>Get a raw key; the attributes and key returned here are in terms of those defined by the firmware installed on the PicoCalc’s STM32 firmware. If raw keys are not enabled, this will block until they are enabled.</p>
+</section>
 </section>
 <section id="picocalc-sound">
 <h2><code class="docutils literal notranslate"><span class="pre">picocalc-sound</span></code></h2>
@@ -148,7 +168,7 @@
 <p>( fs – )</p>
 <p>Set the FAT32 filesystem object for saving screenshots with Attention (Break (Shift-Escape) on the PicoCalc keyboard, Control-T on the serial and USB CDC consoles) <code class="docutils literal notranslate"><span class="pre">s</span></code>. This filesystem defaults to the SD card FAT32 filesystem first, if configured, or the PSRAM FAT32 filesystem second, if configured, or the on-board flash storage FAT32 filesystem third, if configured.</p>
 </section>
-<section id="id4">
+<section id="id6">
 <h3><code class="docutils literal notranslate"><span class="pre">screenshot-fs&#64;</span></code></h3>
 <p>( – fs )</p>
 <p>Get the FAT32 filesystem object for saving screenshots with the attention key combo.</p>
@@ -158,7 +178,7 @@
 <p>( path-addr path-bytes – )</p>
 <p>Set the base path for saving screenshots with Attention (Break (Shift-Escape) on the PicoCalc keyboard, Control-T on the serial and USB CDC consoles) <code class="docutils literal notranslate"><span class="pre">s</span></code>. This path defaults to <code class="docutils literal notranslate"><span class="pre">/SCREEN</span></code>. Note that this directory will be automatically created if it does not exist when taking a screenshot with the console attention key combo, but its parent directorie(s) will not be automatically created.</p>
 </section>
-<section id="id5">
+<section id="id7">
 <h3><code class="docutils literal notranslate"><span class="pre">screenshot-path&#64;</span></code></h3>
 <p>( – path-addr path-bytes )</p>
 <p>Get the base path for saving screenshots with the attention key combo.</p>
@@ -169,6 +189,57 @@
 <p>This is the actual word that implements the taking of screenshots. Note that when this word is executed directly the display is <em>not</em> flashed unlike when taking a screenshot with the console attention key combo.</p>
 </section>
 </section>
+<section id="picocalc-keys">
+<h2><code class="docutils literal notranslate"><span class="pre">picocalc-keys</span></code></h2>
+<p>Compiling <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_keys.fs</span></code> adds the <code class="docutils literal notranslate"><span class="pre">picocalc-keys</span></code> module.</p>
+<p>This module makes use of raw keys, and ignores keypresses and key releases when raw keys are not enabled.</p>
+<p>This module contains the following words:</p>
+<section id="x-key-out-of-range">
+<h3><code class="docutils literal notranslate"><span class="pre">x-key-out-of-range</span></code></h3>
+<p>( – )</p>
+<p>Keycode out of range exception. Note that for this purpose all keycodes in range 0 &lt;= x &lt; 256 are treated as valid even if they do not correspond to actual keys.</p>
+</section>
+<section id="clear-keymap">
+<h3><code class="docutils literal notranslate"><span class="pre">clear-keymap</span></code></h3>
+<p>( – )</p>
+<p>Clear the keycode map so that all keys are treated as not being pressed.</p>
+</section>
+<section id="reset-keymap">
+<h3><code class="docutils literal notranslate"><span class="pre">reset-keymap</span></code></h3>
+<p>( – )</p>
+<p>Reset the pressed and released states of all keys in the keycode map.</p>
+</section>
+<section id="reset-key">
+<h3><code class="docutils literal notranslate"><span class="pre">reset-key</span></code></h3>
+<p>( keycode – )</p>
+<p>Reset the pressed and released state of a single key in the keycode map by keycode.</p>
+</section>
+<section id="update-keymap">
+<h3><code class="docutils literal notranslate"><span class="pre">update-keymap</span></code></h3>
+<p>( – )</p>
+<p>Update the keymap by reading any queued raw keys in a non-blocking fashion.</p>
+</section>
+<section id="wait-update-keymap">
+<h3><code class="docutils literal notranslate"><span class="pre">wait-update-keymap</span></code></h3>
+<p>( – )</p>
+<p>Update the keymap by waiting for a raw key to be queued and then reading any queued raw keys in a blocking fashion.</p>
+</section>
+<section id="keymap">
+<h3><code class="docutils literal notranslate"><span class="pre">keymap&#64;</span></code></h3>
+<p>( keycode – pressed )</p>
+<p>Get whether a given key is pressed by keycode up to the last time <code class="docutils literal notranslate"><span class="pre">update-keymap</span></code> or <code class="docutils literal notranslate"><span class="pre">wait-update-keymap</span></code> were called while raw keys were enabled.</p>
+</section>
+<section id="keymap-pressed">
+<h3><code class="docutils literal notranslate"><span class="pre">keymap-pressed&#64;</span></code></h3>
+<p>( keycode – pressed )</p>
+<p>Get whether a given key has been pressed since the last time that key was reset by keycode.</p>
+</section>
+<section id="keymap-released">
+<h3><code class="docutils literal notranslate"><span class="pre">keymap-released&#64;</span></code></h3>
+<p>( keycode – released )</p>
+<p>Get whether a given key has been released since the last time that key was reset by keycode.</p>
+</section>
+</section>
 <section id="fat32-tools">
 <h2><code class="docutils literal notranslate"><span class="pre">fat32-tools</span></code></h2>
 <p>Compiling <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_fat32.fs</span></code> adds the following words to the <code class="docutils literal notranslate"><span class="pre">fat32-tools</span></code> module:</p>
@@ -177,7 +248,7 @@
 <p>( – fs )</p>
 <p>This returns the FAT32 filesystem object for the on-board flash ‘blocks’ FAT32 filesystem if <code class="docutils literal notranslate"><span class="pre">extra/common/setup_blocks_fat32.fs</span></code> has been compiled before <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_fat32.fs</span></code>.</p>
 </section>
-<section id="id6">
+<section id="id8">
 <h3><code class="docutils literal notranslate"><span class="pre">blocks-fs:</span></code></h3>
 <p>( – )</p>
 <p>This sets the current FAT32 filesystem to the FAT32 filesystem object for the on-board flash ‘blocks’ FAT32 filesystem if <code class="docutils literal notranslate"><span class="pre">extra/common/setup_blocks_fat32.fs</span></code> has been compiled before <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_fat32.fs</span></code>.</p>
@@ -187,7 +258,7 @@
 <p>( – fs )</p>
 <p>This returns the FAT32 filesystem object for the FAT32 filesystem in partition 0 of the SDHC or SDXC card inserted in your PicoCalc unless the constant <code class="docutils literal notranslate"><span class="pre">no-sd-fs</span></code> was defined in flash prior to compiling <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_fat32.fs</span></code>.</p>
 </section>
-<section id="id7">
+<section id="id9">
 <h3><code class="docutils literal notranslate"><span class="pre">sd-fs:</span></code></h3>
 <p>( – )</p>
 <p>This sets the current FAT32 filesystem to the FAT32 filesystem object for the FAT32 filesystem in partition 0 of the SDHC or SDXC card inserted in your PicoCalc unless the constant <code class="docutils literal notranslate"><span class="pre">no-sd-fs</span></code> was defined in flash prior to compiling <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_fat32.fs</span></code>.</p>
@@ -197,7 +268,7 @@
 <p>( – fs )</p>
 <p>This returns the FAT32 filesystem object for the FAT32 filesystem in PSRAM if <code class="docutils literal notranslate"><span class="pre">extra/rp2350/setup_pico_plus_2_psram_fat32.fs</span></code> was compiled before compiling <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_fat32.fs</span></code>.</p>
 </section>
-<section id="id8">
+<section id="id10">
 <h3>`psram-fs:</h3>
 <p>( – )</p>
 <p>This sets the current FAT32 filesystem to the FAT32 filesystem object for the FAT32 filesystem in PSRAM if <code class="docutils literal notranslate"><span class="pre">extra/rp2350/setup_pico_plus_2_psram_fat32.fs</span></code> was compiled before compiling <code class="docutils literal notranslate"><span class="pre">extra/rp_common/picocalc_fat32.fs</span></code>.</p>

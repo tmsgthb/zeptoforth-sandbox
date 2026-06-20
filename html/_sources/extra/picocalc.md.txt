@@ -98,6 +98,26 @@ Set the screenshot hook. This defaults to 0, indicating no hook set.
 
 Get the screenshot hook. This defaults to 0, indicating no hook set.
 
+##### `raw-keys-enabled!`
+( enabled -- )
+
+Set raw keys enabled. This defaults to false. If the raw keys enabled setting changes, the key input queue is cleared.
+
+##### `raw-keys-enabled@`
+( -- enabled )
+
+Get raw keys enabled. This defaults to false.
+
+##### `raw-key>?`
+( -- available )
+
+Get whether a raw key is available. This always returns false when raw keys are not enabled.
+
+##### `raw-key>`
+( -- attributes key )
+
+Get a raw key; the attributes and key returned here are in terms of those defined by the firmware installed on the PicoCalc's STM32 firmware. If raw keys are not enabled, this will block until they are enabled.
+
 ### `picocalc-sound`
 
 The `picocalc-sound` module contains the following words:
@@ -154,6 +174,59 @@ Get the base path for saving screenshots with the attention key combo.
 ( path-addr path-bytes fs -- )
 
 This is the actual word that implements the taking of screenshots. Note that when this word is executed directly the display is _not_ flashed unlike when taking a screenshot with the console attention key combo.
+
+### `picocalc-keys`
+
+Compiling `extra/rp_common/picocalc_keys.fs` adds the `picocalc-keys` module.
+
+This module makes use of raw keys, and ignores keypresses and key releases when raw keys are not enabled.
+
+This module contains the following words:
+
+##### `x-key-out-of-range`
+( -- )
+
+Keycode out of range exception. Note that for this purpose all keycodes in range 0 <= x < 256 are treated as valid even if they do not correspond to actual keys.
+
+##### `clear-keymap`
+( -- )
+
+Clear the keycode map so that all keys are treated as not being pressed.
+
+##### `reset-keymap`
+( -- )
+
+Reset the pressed and released states of all keys in the keycode map.
+
+##### `reset-key`
+( keycode -- )
+
+Reset the pressed and released state of a single key in the keycode map by keycode.
+
+##### `update-keymap`
+( -- )
+
+Update the keymap by reading any queued raw keys in a non-blocking fashion.
+
+##### `wait-update-keymap`
+( -- )
+
+Update the keymap by waiting for a raw key to be queued and then reading any queued raw keys in a blocking fashion.
+
+##### `keymap@`
+( keycode -- pressed )
+
+Get whether a given key is pressed by keycode up to the last time `update-keymap` or `wait-update-keymap` were called while raw keys were enabled.
+
+##### `keymap-pressed@`
+( keycode -- pressed )
+
+Get whether a given key has been pressed since the last time that key was reset by keycode.
+
+##### `keymap-released@`
+( keycode -- released )
+
+Get whether a given key has been released since the last time that key was reset by keycode.
 
 ### `fat32-tools`
 
