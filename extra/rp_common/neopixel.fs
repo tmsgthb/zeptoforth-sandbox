@@ -127,7 +127,7 @@ begin-module neopixel
     init-pio addr neopixel-pio !
     init-sm addr neopixel-sm !
     addr clear-neopixel
-    160 15 init-sm init-pio sm-clkdiv! \ 8000000 Hz
+    8000000 sysclk @ min init-sm init-pio sm-clock!
     left init-sm init-pio sm-out-shift-dir
     on init-sm init-pio sm-autopull!
     24 init-sm init-pio sm-pull-threshold!
