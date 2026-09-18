@@ -2,6 +2,7 @@
 set -e
 
 # Copyright (c) 2024-2025 Travis Bemann
+# Copyright (c) 2026 Yaroslav Salnikov
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -50,4 +51,7 @@ issue_bootsel ${PORT}
 
 flash_rp ${RP2350_KERNEL} ${BLOCK_DEVICE} ${FILESYSTEM}
 ${DIR}/make_uf2_image.sh ${VERSION} rp2350_16mib ${PORT} full_usb
+issue_bootsel ${PORT}
 
+flash_rp ${RP2350_KERNEL} ${BLOCK_DEVICE} ${FILESYSTEM}
+${DIR}/make_uf2_image.sh ${VERSION} rp2350_16mib ${PORT} full_msc_only

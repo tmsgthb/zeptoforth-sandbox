@@ -2,6 +2,7 @@
 set -e
 
 # Copyright (c) 2025-2026 Travis Bemann
+# Copyright (c) 2026 Yaroslav Salnikov
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -85,7 +86,7 @@ else
 fi
 BAUD=115200
 
-utils/codeload3.sh -B ${BAUD} -p ${PORT} serial src/${PLATFORM}/forth/setup_full.fs
+utils/codeload3.sh -B ${BAUD} -p ${PORT} serial src/${PLATFORM}/forth/setup_full_msc_only.fs
 mkdir -p /tmp/picocalc
 echo 'compile-to-flash' > /tmp/picocalc/prefix.fs
 echo "${CORE} constant select-picocalc-tasks-core" >> /tmp/picocalc/prefix.fs

@@ -19,7 +19,15 @@
 \ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 \ SOFTWARE.
 
-compile-to-flash
+0
+defined? usb-console? not [if]
+  ." 'usb-console?' constant must be defined" cr
+  1+
+[then]
+
+0> [if]
+  constant-not-defined
+[then]
 
 continue-module usb
 
@@ -153,6 +161,7 @@ continue-module usb
     ;
 
     \ Initialize USB console
+
     : init-usb-console ( -- )
       
       init-usb
@@ -164,11 +173,21 @@ continue-module usb
 
       usb-insert-device
 
-      switch-to-usb-console
+      usb-console? if switch-to-usb-console then
     ;
 
-    initializer init-usb-console
+    \ Start the process of initializing USB
+    : init-usb
+      [ defined? usb-msc-blocks  [if] usb-msc-blocks [else] 0 [then] ] literal 
+      to blks
+      init-usb-console
+    ;
+    
+    initializer init-usb
 
+    \ Set the block device to be used by the USB Mass Storage Device
+    : set-usb-blocks ( blocks-object -- ) to blks ;
+    
   end-module> import
 
   \ Select the USB serial console
@@ -189,6 +208,7 @@ continue-module usb
     ['] usb-emit ['] usb-emit? rot ['] usb-flush-console swap with-error-output
   ;
 
-end-module
+  \ Export SET-USB-BLOCKS to enable it to be called later from outside
+  ' set-usb-blocks export set-usb-blocks
 
-compile-to-ram
+end-module

@@ -1,6 +1,7 @@
 \ Copyright (c) 2023-2025 Travis Bemann
 \ Copyright (c) 2024-2025 Serialcomms (GitHub)
 \ Copyright (c) 2025 Paul Koning
+\ Copyright (c) 2026 Yaroslav Salnikov
 \
 \ Permission is hereby granted, free of charge, to any person obtaining a copy
 \ of this software and associated documentation files (the "Software"), to deal
@@ -20,8 +21,6 @@
 \ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 \ SOFTWARE.
 
-compile-to-flash
-
 begin-module usb
   
   \ Are USB console special characters enabled?
@@ -31,10 +30,18 @@ end-module> import
 
 begin-module usb-core
 
-  rp2040? [if] armv6m import [then]
+  armv6m import
   interrupt import
   usb-constants import
   usb-cdc-buffers import
+
+  oo import
+  block-dev import
+  task import
+  systick import
+
+  0 value blks
+
 
   \ Start a descriptor
   : :desc ( desc-id -- desc-start ) here 1 allot swap c, ;
@@ -78,75 +85,168 @@ begin-module usb-core
 
   \ (Pico - RI) Ring Indicate
   variable RING?
-  
+
+  \ Mass Storage variables
+
+  variable LUNS
+  variable CBW-phase
+  variable response-cmd
+  variable prevent-removal
+
+  variable EP4-mailbox
+  variable EP4-task
+  variable EP4-to-Pico-event
+  variable EP4-to-Host-event
+
+  variable LBA-CURRENT
+  variable LBA-COUNT
+
   \ USB Standard Device Descriptor - 18 bytes
   create device-data
-    USB_DT_DEVICE :desc
-    \ USB_VERSION_BCD
-    $00 c, $02 c,
-    \ USB_MISC_IAD_DEVICE (IAD = Interface Association Device)
-    $EF c, $02 c, $01 c,
-    \ USB_EP0_MAX
-    $40 c,
+  USB_DT_DEVICE :desc
+  \ USB_VERSION_BCD
+  $00 c, $02 c,
+  \ USB_MISC_IAD_DEVICE (IAD = Interface Association Device)
+  $EF c, $02 c, $01 c,
+  \ USB_EP0_MAX
+  $40 c,
 
-    \ https://github.com/pidcodes/pidcodes.github.com/pull/1024
-    \ USB_VENDOR_ID
-    $09 c, $12 c,
-    \ USB_PRODUCT_ID
-    $CC c, $CC c,
+  \ https://github.com/pidcodes/pidcodes.github.com/pull/1024
+  \ USB_VENDOR_ID
+  $09 c, $12 c,
+  \ USB_PRODUCT_ID
+  $CC c, $CC c,
   
-    \ USB_PRODUCT_BCD
-    $00 c, $02 c,
-    \ STRING_MANUFACTURER
-    $01 c,
-    \ STRING_PRODUCT
-    $02 c,
-    \ STRING_SERIAL
-    $03 c,
-    \ CONFIGURATIONS
-    $01 c,
+  \ USB_PRODUCT_BCD
+  $00 c, $02 c,
+  \ STRING_MANUFACTURER
+  $01 c,
+  \ STRING_PRODUCT
+  $02 c,
+  \ STRING_SERIAL
+  $03 c,
+  \ CONFIGURATIONS
+  $01 c,
   ;desc4
 
   \ USB Standard Configuration Descriptor
   create config-data
   \ Configuration Descriptor (75 bytes)
-    USB_DT_CONFIG :desc 2 allot $02 c, $01 c, $00 c, $80 c, $FA c, ;desc
-    \ Interface Association Descriptor (IAD)
-    11 :desc $00 c, $02 c, $02 c, $02 c, $00 c, $00 c, ;desc
-    \ CDC Class Interface Descriptor (CCI)
-    4 :desc $00 c, $00 c, $01 c, $02 c, $02 c, $00 c, $00 c, ;desc
-    \ CDC Functional Descriptor - Header (CDC Class revision 1.20)
-    $24 :desc $00 c, $20 c, $01 c, ;desc
-    \ CDC Functional Descriptor - Abstract Control Management
-    $24 :desc $02 c, $06 c, ;desc
-    \ CDC Functional Descriptor - Union
-    $24 :desc $06 c, $00 c, $01 c, ;desc
-    \ CDC Functional Descriptor - Call Management
-    $24 :desc $01 c, $01 c, $01 c, ;desc
-    \ Endpoint Descriptor: EP3 In - (max packet size = 16)
-    5 :desc $83 c, $03 c, $10 c, $00 c, $FF c, ;desc
-    \ CDC Data Class Interface Descriptor: CDC Data
-    4 :desc $01 c, $00 c, $02 c, $0A c, $00 c, $00 c, $00 c, ;desc
-    \ Endpoint Descriptor: EP1 In  - Bulk Transfer Type
-    5 :desc $81 c, $02 c, $40 c, $00 c, $00 c, ;desc
-    \ Endpoint Descriptor: EP1 Out - Bulk Transfer Type
-    5 :desc  $01 c, $02 c, $40 c, $00 c, $00 c, ;desc
+  \    USB_DT_CONFIG :desc 2 allot $02 c, $01 c, $00 c, $80 c, $FA c, ;desc
+  USB_DT_CONFIG :desc 2 allot $03 c, $01 c, $00 c, $80 c, $FA c, ;desc
+  \ Interface Association Descriptor (IAD)
+  11 :desc $00 c, $02 c, $02 c, $02 c, $00 c, $00 c, ;desc
+  \ CDC Class Interface Descriptor (CCI)
+  4 :desc $00 c, $00 c, $01 c, $02 c, $02 c, $00 c, $00 c, ;desc
+  \ CDC Functional Descriptor - Header (CDC Class revision 1.20)
+  $24 :desc $00 c, $20 c, $01 c, ;desc
+  \ CDC Functional Descriptor - Abstract Control Management
+  $24 :desc $02 c, $06 c, ;desc
+  \ CDC Functional Descriptor - Union
+  $24 :desc $06 c, $00 c, $01 c, ;desc
+  \ CDC Functional Descriptor - Call Management
+  $24 :desc $01 c, $01 c, $01 c, ;desc
+  \ Endpoint Descriptor: EP3 In - (max packet size = 16)
+  5 :desc $83 c, $03 c, $10 c, $00 c, $FF c, ;desc
+  \ CDC Data Class Interface Descriptor: CDC Data
+  4 :desc $01 c, $00 c, $02 c, $0A c, $00 c, $00 c, $00 c, ;desc
+  \ Endpoint Descriptor: EP1 In  - Bulk Transfer Type
+  5 :desc $81 c, $02 c, $40 c, $00 c, $00 c, ;desc
+  \ Endpoint Descriptor: EP1 Out - Bulk Transfer Type
+  5 :desc  $01 c, $02 c, $40 c, $00 c, $00 c, ;desc
+  \ -------------------------------------------------------
+  \ Interface Descriptor MSC
+  4 :desc $02 c, $00 c, $02 c, $08 c, $06 c, $50 c, $00 c, ;desc
+  \ Endpoint Descriptor BULK-IN
+  5 :desc $84 c, $02 c, $40 c, $00 c, $00 c, ;desc
+  \ Endpoint Descriptor BULK-OUT
+  5 :desc $04 c, $02 c, $40 c, $00 c, $00 c, ;desc
+  
   here config-data - cell align, constant config-data-size
   config-data-size config-data 2 + hcurrent!
 
   \ USB Language String Descriptor
   create language-id-string-data
-    \ Language String for LANGUAGE_ENGLISH_US
-    USB_DT_STRING :desc $09 c, $04 c, ;desc4
+  \ Language String for LANGUAGE_ENGLISH_US
+  USB_DT_STRING :desc $09 c, $04 c, ;desc4
 
   : usb-string-1 ( -- addr ) c" zeptoforth" ;
   : usb-string-2 ( -- addr ) c" zeptoforth CDC Console" ;
- 
+  
   \ USB ASCII Character generated serial number buffer 
   17 buffer: usb-string-3 \ (size byte + 16 ASCII Characters)
   
   \ USB ASCII to unicode string conversion buffer
   64 buffer: unicode-buffer
+
+  create SCSI-inquiry-response-data
+  \ from tinyusb/src/class/msc/msc.h
+  ( uint8_t peripheral_device_type     : 5;) 0 c,
+  ( uint8_t peripheral_qualifier       : 3;)
+
+  ( uint8_t                            : 7;) 
+  ( uint8_t is_removable               : 1;) 7 bit c,
+
+  ( uint8_t version;)            2 c,
+
+  ( uint8_t response_data_format       : 4;) 2 c,
+  ( uint8_t hierarchical_support       : 1;)
+  ( uint8_t normal_aca                 : 1;)
+  ( uint8_t                            : 2;)
+
+  ( uint8_t additional_length;)       36 5 - c,
+
+  ( uint8_t protect                    : 1;) 0 c,
+  ( uint8_t                            : 2;)
+  ( uint8_t third_party_copy           : 1;)
+  ( uint8_t target_port_group_support  : 2;)
+  ( uint8_t access_control_coordinator : 1;)
+  ( uint8_t scc_support                : 1;)
+
+  ( uint8_t addr16                     : 1;) 0 c,
+  ( uint8_t                            : 3;)
+  ( uint8_t multi_port                 : 1;)
+  ( uint8_t                            : 1; // vendor specific)
+  ( uint8_t enclosure_service          : 1;)
+  ( uint8_t                            : 1;)
+
+  ( uint8_t                            : 1; // vendor specific) 0 c,
+  ( uint8_t cmd_que                    : 1;)
+  ( uint8_t                            : 2;)
+  ( uint8_t sync                       : 1;)
+  ( uint8_t wbus16                     : 1;)
+  ( uint8_t                            : 2;)
+  
+  ( uint8_t vendor_id[8]  ; ///< 8 bytes of ASCII data identifying the vendor of the product.)
+  char Z c, char e c, char p c, char t c, char o c, char f c, bl c, bl c,   \ zeptof
+  ( uint8_t product_id[16]; ///< 16 bytes of ASCII data defined by the vendor.)
+  char b c, char l c, char k c, bl c, char M c, char a c, char s c, char s c, bl c, char S c, char t c, char o c, char r c, char a c, char g c, char e c, \ blk Mass Storage
+  ( uint8_t product_rev[4]; ///< 4 bytes of ASCII data defined by the vendor.)
+  char 1 c, char . c, char 0 c, char 0 c, 
+  
+  create SCSI-mode-sense-response-data
+  3 c, 0 c,
+  0 c,     \ $80 = write protected
+  0 c, 
+  \ 4 bytes total ( from tinyusb/src/class/msc/msc.h )
+
+  create SCSI-request-sense-data
+  $70 c,        \ error
+  $00 c,
+  $02 c,        \ not ready
+  0 c, 0 c, 0 c, 0 c,
+  $0a c,        \ 10 additional bytes
+  0 c, 0 c, 0 c, 0 c,
+  $3a c, $00 c,       \ medium not present
+  0 c, 
+  0 c, 0 c, 0 c, 
+  \ 18 bytes total
+
+  \ Read Format Capacity Response data
+  12 buffer: SCSI-format-capacity-data 
+
+  \ Read Capacity Response data
+  8 buffer: SCSI-capacity-data
 
   \ USB CDC/ACM Class line state notification descriptor
   begin-structure line-state-notification-descriptor
@@ -224,6 +324,28 @@ begin-module usb-core
     cfield: cdc-line-data
   end-structure  
 
+  \ Mass Storage CBW structure
+  begin-structure CBW-size
+    field:  CBW-dCBWSignature
+    field:  CBW-dCBWTag
+    field:  CBW-dCBWDataTransferLength
+    cfield: CBW-bmCBWFlags
+    cfield: CBW-bCBWLUN
+    cfield: CBW-bCBWCBLength
+    16 +field CBW-dCBWCB
+  end-structure
+
+  begin-structure CSW-size
+    field:  CSW-dCSWSignature
+    field:  CSW-wCSWTag
+    field:  CSW-dCSWDataResidue
+    cfield: CSW-bCSWStatus
+  end-structure
+
+  CBW-size buffer: CBW-COPY
+  CSW-size buffer: CSW
+  512 buffer: lba-buf
+
   \ Setup, CDC Class and Endpoint buffers
   usb-setup-command buffer: usb-setup
   cdc-line-coding-profile buffer: cdc-line-coding
@@ -239,6 +361,10 @@ begin-module usb-core
   usb-endpoint-profile buffer: EP1-to-Pico
   \ Function endpoint 3 to Host
   usb-endpoint-profile buffer: EP3-to-Host
+  \ Mass Storage Endpoints
+  usb-endpoint-profile buffer: EP4-to-Host
+  usb-endpoint-profile buffer: EP4-to-Pico
+
 
   \ Initialise all port signals off 
   : init-port-signals ( -- )
@@ -347,6 +473,9 @@ begin-module usb-core
     64 true  USB_EP_TYPE_BULK       1 EP1-to-Host init-usb-endpoint-x
     64 false USB_EP_TYPE_BULK       1 EP1-to-Pico init-usb-endpoint-x
     16 true  USB_EP_TYPE_INTERRUPT  3 EP3-to-Host init-usb-endpoint-x
+    \ Mass Storage Endpoints
+    64 true  USB_EP_TYPE_BULK       4 EP4-to-Host init-usb-endpoint-x
+    64 false USB_EP_TYPE_BULK       4 EP4-to-Pico init-usb-endpoint-x
   ;
 
   \ Toggle data PID DATA0/DATA1 on endpoint buffer completion
@@ -361,7 +490,7 @@ begin-module usb-core
   \ Set buffer available to Host - final step in sending data packet 
   : usb-set-buffer-available { buffer-available endpoint -- }
     [ rp2040? ] [if] 
-    code[ b> >mark b> >mark b> >mark b> >mark b> >mark b> >mark ]code
+      code[ b> >mark b> >mark b> >mark b> >mark b> >mark b> >mark ]code
     [then]
     buffer-available endpoint buffer-control @ bis!
   ;
@@ -505,7 +634,7 @@ begin-module usb-core
     unicode-bytes unicode-buffer 0 + c! \ descriptor length
     USB_DT_STRING unicode-buffer 1 + c! \ descriptor type 3 = string
     string-length 0 do    
-     string-start i + c@ unicode-buffer 2 + i 2 * + c!
+      string-start i + c@ unicode-buffer 2 + i 2 * + c!
     loop
     unicode-buffer usb-send-descriptor
   ;
@@ -578,6 +707,9 @@ begin-module usb-core
     init-usb-function-endpoints
     init-line-state-notification
     EP1-to-Pico 64 usb-receive-data-packet
+
+    EP4-to-Pico 64 usb-receive-data-packet
+
     \ device not ready to use until this point reached
     true usb-device-configured? !
     1 usb-device-confignum !
@@ -665,7 +797,7 @@ begin-module usb-core
     \ CDC break is a usable signal state here as many clients are capable of
     \ sending it.
     usb-setup setup-value h@ $FFFF = if
-    \ useful action can go here
+      \ useful action can go here
     then 
   ;
 
@@ -673,10 +805,17 @@ begin-module usb-core
   : usb-setup-type-class-respond-to-host ( -- )
     usb-setup setup-request c@ case
       CDC_CLASS_GET_LINE_CODING of usb-class-get-line-coding endof
+      $fe of
+        0 EP4-to-Pico-event !         \ reinitialize state variables
+        0 EP4-to-Host-event !         \ in case of disconnect
+        -1 response-cmd !
+        0 CBW-phase !
+        1 LUNS  usb-start-control-transfer-to-host
+      endof
     endcase
   ;
 
-   \ Route CDC class setup type request to Pico request handler word
+  \ Route CDC class setup type request to Pico request handler word
   : usb-setup-type-class-request-to-pico ( -- )
     usb-setup setup-request c@ case
       CDC_CLASS_SET_LINE_BREAK of usb-class-set-line-break endof
@@ -725,7 +864,12 @@ begin-module usb-core
     usb-prepare-setup-direction
     USB_BUF_CTRL_DATA1_PID EP0-to-Host next-pid !
     USB_BUF_CTRL_DATA1_PID EP0-to-Pico next-pid !
-    usb-setup setup-request-type c@ case
+
+    \ 16 base !
+    \ USB_SETUP_PACKET dup c@ . 1+ c@ . cr 
+    \ decimal
+
+    usb-setup setup-request-type c@  case
       USB_REQUEST_TYPE_STANDARD of usb-setup-type-standard endof
       USB_REQUEST_TYPE_CLASS of usb-setup-type-class endof
       usb-stall-ep0-respond-to-host
@@ -875,6 +1019,292 @@ begin-module usb-core
     \ N.B. no corresponding EP3-to-Pico endpoint required
   ;
 
+  : u@  ( adr -- x ) \ unaligned read for RP2040
+    [ rp2350? ] [if] [inlined] @ [else]
+      dup c@ swap dup 1+ c@ 8 lshift swap dup 2 + c@ 16 lshift swap 3 + c@ 24 lshift 
+      or or or
+    [then]
+  ;
+
+  : uh! ( x adr -- ) \ unaligned 16-bit write
+    [ rp2350? ] [if] [inlined] h! [else]
+      over $ff and over c! swap $ff00 and 8 rshift swap 1+  c!
+    [then]
+  ;
+
+  : reverse-byte-order ( u_in -- u_out )
+    [inlined] code[ r6 r6 rev_,_ ]code
+  ;
+
+  : SCSI-prepare-format-capacity-data
+    SCSI-format-capacity-data 12 0 fill
+    8 SCSI-format-capacity-data 3 + c!                  \ list_length
+    blks block-count reverse-byte-order SCSI-format-capacity-data 4 + ! \ block_num    should be aligned
+    2 SCSI-format-capacity-data 8 + c!                  \ 2 - formated media
+    blks block-size dup $ff and 8 lshift swap $ff00 and 8 rshift or SCSI-format-capacity-data 10 + uh!
+  ;
+
+  : SCSI-response ( -- )
+    response-cmd @ 0 >= if
+      CBW-COPY CBW-dCBWTag CSW CBW-dCBWTag 4 move
+      0 CSW CSW-dCSWDataResidue !
+      0 { r-val }
+      blks 0= if 1 to r-val else 0 to r-val then
+      response-cmd @ case
+        SCSI_CMD_TEST_UNIT_READY of
+          r-val CSW CSW-bCSWStatus c!
+        endof
+        SCSI_CMD_READ_CAPACITY_10 of
+          r-val CSW CSW-bCSWStatus c!
+        endof
+        SCSI_CMD_READ_10 of
+          r-val CSW CSW-bCSWStatus c!
+        endof
+        SCSI_CMD_WRITE_10 of
+          r-val CSW CSW-bCSWStatus c!
+        endof
+        SCSI_CMD_READ_FORMAT_CAPACITY of
+          r-val CSW CSW-bCSWStatus c!
+        endof
+
+        0 CSW CSW-bCSWStatus c!
+      endcase
+      CSW EP4-to-Host dpram-address @ 13 move
+      -1 response-cmd !
+      EP4-to-Host 13 usb-send-data-packet
+    then  
+  ;
+
+  : read-next-lba
+    LBA-COUNT @ 0> if 
+      lba-buf   blks block-size    LBA-CURRENT @   blks block@   \ read block to lba-buf
+      1 LBA-CURRENT +!
+      -1 LBA-COUNT +!
+      0 EP4-to-Host processed-bytes !
+      blks block-size EP4-to-Host total-bytes !
+      lba-buf EP4-to-Host source-address !
+      lba-buf     EP4-to-Host dpram-address @   EP4-to-Host max-packet-size @     move 
+      EP4-to-Host EP4-to-Host max-packet-size @ usb-send-data-packet
+    else
+      0 CBW-phase !
+      SCSI-response
+    then
+  ;
+
+  : write-next-lba { init? -- }
+    0 EP4-to-Pico processed-bytes !
+    blks block-size EP4-to-Pico total-bytes !
+    lba-buf   EP4-to-Pico  source-address !
+    
+    init? 0= if
+      lba-buf   blks block-size   LBA-CURRENT @  blks block!
+      1 LBA-CURRENT +!
+      -1 LBA-COUNT +!
+    then
+    
+    LBA-COUNT @ 0 = if
+      0 CBW-phase !
+      SCSI-response
+    then
+  ;
+
+  : SCSI-command { adr len -- }
+    adr c@ case
+      SCSI_CMD_INQUIRY of                  \ INQUIRY
+        SCSI-inquiry-response-data EP4-to-Host dpram-address @ 36 move
+        SCSI_CMD_INQUIRY response-cmd !
+        EP4-to-Host 36 usb-send-data-packet
+      endof
+
+      SCSI_CMD_TEST_UNIT_READY of                  \ Test unit ready
+        SCSI_CMD_TEST_UNIT_READY response-cmd !
+        SCSI-response
+      endof
+
+      SCSI_CMD_READ_CAPACITY_10 of                  \ Read Capacity
+        blks block-count 1 - reverse-byte-order SCSI-capacity-data !
+        blks block-size  reverse-byte-order SCSI-capacity-data 4 + !
+        SCSI-capacity-data EP4-to-Host dpram-address @ 8 move
+        SCSI_CMD_READ_CAPACITY_10 response-cmd !
+        EP4-to-Host 8 usb-send-data-packet
+      endof
+      
+      SCSI_CMD_READ_10 of                  \ Read(10)
+        CBW-COPY CBW-dCBWCB  2 + u@ reverse-byte-order                  \ Unaligned memory read !!! 
+        CBW-COPY CBW-dCBWCB  7 + dup c@ swap 1+ c@ swap 8 lshift or 
+        ( lba num -- )
+        SCSI_CMD_READ_10 response-cmd !
+        1 CBW-phase !
+        LBA-COUNT !
+        LBA-CURRENT !
+        ['] read-next-lba EP4-to-Host callback-handler !
+        read-next-lba
+      endof
+
+      SCSI_CMD_MODE_SENSE of                  \ mode sense
+        SCSI-mode-sense-response-data EP4-to-Host dpram-address @ 4 move
+        SCSI_CMD_MODE_SENSE response-cmd !
+        EP4-to-Host 4 usb-send-data-packet
+      endof
+
+      SCSI_CMD_START_STOP_UNIT of                  \ handle STOP START UNIT
+        SCSI_CMD_START_STOP_UNIT response-cmd !
+        SCSI-response
+      endof
+
+      SCSI_CMD_PREVENT_ALLOW_REMOVAL of                  \ prevent/allow media removal
+        CBW-COPY CBW-dCBWCB 4 + c@ prevent-removal !
+        SCSI_CMD_PREVENT_ALLOW_REMOVAL response-cmd !
+        SCSI-response
+      endof
+
+      SCSI_CMD_WRITE_10 of                  \ write(10)
+        CBW-COPY CBW-dCBWCB  2 + u@ reverse-byte-order 
+        CBW-COPY CBW-dCBWCB  7 + dup c@ swap 1+ c@ swap 8 lshift or 
+        ( lba num -- )
+        SCSI_CMD_WRITE_10 response-cmd !
+        2 CBW-phase !
+        LBA-COUNT !
+        LBA-CURRENT !
+        ['] write-next-lba EP4-to-Pico callback-handler !
+        true write-next-lba
+      endof
+
+      SCSI_CMD_READ_FORMAT_CAPACITY of                \ read format capacity
+        SCSI-prepare-format-capacity-data
+        SCSI-format-capacity-data EP4-to-Host dpram-address @ 12 move
+        SCSI_CMD_READ_FORMAT_CAPACITY response-cmd !
+        EP4-to-Host 12 usb-send-data-packet
+      endof
+
+      SCSI_CMD_REQUEST_SENSE of                \ request sense
+        SCSI-request-sense-data EP4-to-Host dpram-address @ 18 move
+        SCSI_CMD_REQUEST_SENSE response-cmd !
+        EP4-to-Host 18 usb-send-data-packet
+      endof
+
+      SCSI_CMD_SYNCHRONIZE_CACHE_10 of                \ SYNCHRONIZE CACHE
+        blks flush-blocks
+        SCSI_CMD_SYNCHRONIZE_CACHE_10 response-cmd !
+        SCSI-response 
+      endof
+
+      ." SCSI Cmd: "
+      len 0 do adr i + c@ h.2 loop ." not implemented" cr
+    endcase
+  ;
+
+  : CBW-parse { CBW -- }
+    CBW CBW-COPY 31 move
+    CBW CBW-dCBWSignature 4  s" USBC" equal-strings? if
+      CBW CBW-dCBWCB CBW CBW-bCBWCBLength c@  SCSI-command 
+    then
+  ;
+
+  : ep4-handler-to-host ( -- )
+    EP4-to-Host usb-update-transfer-bytes
+    EP4-to-Host usb-toggle-data-pid
+    false EP4-to-Host endpoint-busy? !
+    CBW-phase @ case
+      0 of
+        SCSI-response
+      endof
+      1 of
+        EP4-to-Host usb-update-endpoint-byte-counts
+        EP4-to-Host usb-get-next-packet-size-to-host 0> if
+          EP4-to-Host  usb-get-continue-source-address EP4-to-Host dpram-address @ EP4-to-Host usb-get-next-packet-size-to-host move
+          EP4-to-Host EP4-to-Host usb-get-next-packet-size-to-host usb-send-data-packet
+        else
+          EP4-to-Host callback-handler @ execute
+        then
+      endof
+    endcase
+  ;
+  
+  : ep4-handler-to-pico ( -- )
+    EP4-to-Pico usb-update-transfer-bytes
+    EP4-to-Pico usb-toggle-data-pid
+    CBW-phase @ case
+      0 of EP4-to-Pico dpram-address @ CBW-parse endof
+      2 of
+        EP4-to-Pico dpram-address @ EP4-to-Pico source-address @ EP4-to-Pico transfer-bytes @ move
+        EP4-to-Pico usb-update-endpoint-byte-counts
+        EP4-to-Pico transfer-bytes @ EP4-to-Pico   source-address +!
+        EP4-to-Pico usb-get-next-packet-size-to-host 0= if
+          false EP4-to-Pico callback-handler @ execute
+        then
+      endof
+    endcase
+    EP4-to-Pico 64 usb-receive-data-packet
+  ;
+  
+  \ Default EP4-handler timeout
+  10000 constant default-timeout
+
+  \ Unmount test EP4-handler timeout
+  20000 constant unmounted-timeout
+
+  \ Mounted state
+  0 constant unmounted
+  1 constant mounted-0
+  2 constant mounted-1
+  
+  : EP4-handler
+    unmounted { mounted-state }
+    systick-counter { begin-tick }
+    default-timeout { current-timeout }
+    begin
+      systick-counter begin-tick - current-timeout > if
+        mounted-state case
+          unmounted of
+            prevent-removal @ if
+              mounted-0 to mounted-state
+            then
+            default-timeout to current-timeout
+          endof
+          mounted-0 of
+            prevent-removal @ 0= if
+              mounted-1 to mounted-state
+              unmounted-timeout to current-timeout
+            else
+              default-timeout to current-timeout
+            then
+          endof
+          mounted-1 of
+            prevent-removal @ 0= if
+              blks flush-blocks
+              unmounted to mounted-state
+            then
+            default-timeout to current-timeout
+          endof
+        endcase
+        systick-counter to begin-tick
+      then
+      current-timeout begin-tick 0 ['] wait-notify-timeout try
+      dup ['] x-timed-out = if 2drop drop 0 then ?raise drop
+      begin
+        EP4-to-Host-event @ if    \ EP4-to-Host interrupt
+          0 EP4-to-Host-event !
+          ep4-handler-to-host
+        then
+        EP4-to-Pico-event @ if  \ EP4-to-Pico interrupt
+          0 EP4-to-Pico-event !
+          ep4-handler-to-pico
+        then
+      EP4-to-Host-event @ 0= EP4-to-Pico-event @ 0= and until
+    again
+  ;
+  
+  : EP4-task-init
+    0 EP4-mailbox !
+    0 EP4-to-Pico-event !
+    0 EP4-to-Host-event !
+    0 ['] EP4-handler 1024 256 512 spawn EP4-task !
+    c" EP4-handler" EP4-task @ task-name!
+    EP4-mailbox 1 EP4-task @ config-notify
+    EP4-task @ run
+  ;
+
   \ USB buffer completion handler distribution - Control EP0 to/from Host
   : usb-buffer-status-control-endpoints ( -- )
     USB_BUFFER_STATUS @ USB_BUFFER_STATUS_EP0_TO_HOST and if
@@ -894,6 +1324,9 @@ begin-module usb-core
     buffer-status USB_BUFFER_STATUS_EP1_TO_HOST and if ep1-handler-to-host then
     buffer-status USB_BUFFER_STATUS_EP1_TO_PICO and if ep1-handler-to-pico then
     buffer-status USB_BUFFER_STATUS_EP3_TO_HOST and if ep3-handler-to-host then
+    buffer-status USB_BUFFER_STATUS_EP4_TO_HOST and if 1 EP4-to-Host-event ! 0 EP4-task @ notify then
+    buffer-status USB_BUFFER_STATUS_EP4_TO_PICO and if 1 EP4-to-Pico-event ! 0 EP4-task @ notify then
+
   ;
 
   \ USB buffer completion handler routing
@@ -964,14 +1397,14 @@ begin-module usb-core
   : generate-usb-serial ( -- )
     base @ { orig-base } 
     [: $10 base !
-    $10 usb-string-3 c! \ simulate 16-byte counted string
-    unique-id <# $10 0 do # loop #> \ 16 hexadecimal characters
-    usb-string-3 1 + swap move
+      $10 usb-string-3 c! \ simulate 16-byte counted string
+      unique-id <# $10 0 do # loop #> \ 16 hexadecimal characters
+      usb-string-3 1 + swap move
     ;] try
     orig-base base !
     ?raise
   ;
- 
+  
   \ Initialize USB hardware and variables
   : init-usb ( -- )
     init-port-signals
@@ -986,7 +1419,13 @@ begin-module usb-core
     false usb-device-configured? !
     false line-notification-complete? !
     false usb-readied? !
-  
+    0 LUNS !
+    0 CBW-phase !
+    0 response-cmd !
+    s" USBS" CSW CSW-dCSWSignature swap move
+    0 prevent-removal !
+    EP4-task-init
+
     ['] usb-irq-handler usbctrl-vector vector!
 
     USB_USB_MUXING_TO_PHY                 USB_USB_MUXING bis!
@@ -997,7 +1436,7 @@ begin-module usb-core
     [ rp2350? ] [if] USB_MAIN_CTRL_PHY_ISOLATE USB_MAIN_CONTROL bic! [then]
     USB_MAIN_CTRL_CONTROLLER_EN           USB_MAIN_CONTROL bis!
     usbctrl-irq NVIC_ISER_SETENA!
-   
+    
     \ Attempt orderly reboot
     \ Allow client time to respond to modem going offline
     reboot-hook @ saved-reboot-hook !
@@ -1015,5 +1454,3 @@ begin-module usb-core
   ;
 
 end-module
-
-compile-to-ram

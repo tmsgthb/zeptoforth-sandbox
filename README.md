@@ -12,7 +12,7 @@ Its kernel has versions written in Thumb-1 assembly, for the RP2040, and Thumb-2
 
 ## Features
 
-The library of code included along with the zeptoforth kernel, which is present in its full form in `full`, `full_usb`, and `full_swdcom` builds, includes the following:
+The library of code included along with the zeptoforth kernel, which is present in its full form in `full`, `full_msc_only`, `full_usb`, and `full_swdcom` builds, includes the following:
 
 * A priority-scheduled preemptive multitasker with deadline scheduling
 * Semaphores
@@ -66,6 +66,7 @@ The library of code included along with the zeptoforth kernel, which is present 
 * User-level FAT32 tools
 * FAT32 filesystem support on top of block storage in on-board Quad SPI flash (on the RP2040, RP2350, and STM32F746 DISCOVERY boards)
 * FAT32 filesystem support on top of PSRAM (on RP2350 boards with PSRAM)
+* USB Mass Storage Device class support on the RP2040 and RP2350
 * Best-effort fault recovery
 * Quad SPI flash storage support (on the STM32F746 DISCOVERY board, the RP2040, and the RP2350)
 * A block editor (on the STM32F746 DISCOVERY board, the RP2040, and the RP2350)
@@ -112,7 +113,7 @@ To load the zeptoforth image (whether just the kernel or an image including prec
 
 Note the address referred to above. This will also reboot the board. In the case of the STM32F411 "Black Pill" board, if it was wedged prior to this, it may be necessary to remove power, apply power while holding down the BOOT0 button, keep the button held down while executing `st-flash erase` and `st-flash write`, and then instead of executing `st-flash reset` release the BOOT0 button and press the NRST button.
 
-To activate SeeedStudio XIAO RP2040-specific features (e.g. properly configuring LED support), after loading the `full` or `full_usb` RP2040 zeptoforth UF2 file execute the following:
+To activate SeeedStudio XIAO RP2040-specific features (e.g. properly configuring LED support), after loading the `full`, `full_msc_only, or `full_usb` RP2040 zeptoforth UF2 file execute the following:
 
     compile-to-flash
     true constant platform-xiao
@@ -120,7 +121,7 @@ To activate SeeedStudio XIAO RP2040-specific features (e.g. properly configuring
 
 Afterwards the `led` module will function properly for the SeeedStudio XIAO RP2040 (e.g. the red, green, and blue LED's will be off on boot).
 
-To activate SeeedStudio WIO RP2040-specified features (e.g. properly configuring LED support), after loading the `full` or `full_usb` RP2040 zeptoforth UF2 file execute the following:
+To activate SeeedStudio WIO RP2040-specified features (e.g. properly configuring LED support), after loading the `full`, `full_msc_only`, or `full_usb` RP2040 zeptoforth UF2 file execute the following:
 
     compile-to-flash
     true constant platform-wio
@@ -149,7 +150,8 @@ Prebuilt binaries are in `bin/<version>/<platform>/` in release tarballs. They a
 where \<type> is one of:
 
 * `full` (full functionality compiled in except for USB and swdcom support with a cornerstone* to enable resetting functionality back to "factory" settings)
-* `full_usb` (full functionality compiled in including USB, and without swdcom, support with a cornerstone to enable resetting functionality back to "factory" settings)
+* `full_msc_only` (full functionality compiled in including USB Mass Storage Device class support but using the serial console rather than USB CDC console, and without swdcom support, with a cornerstone to enable resetting functionality back to "factory" settings)
+* `full_usb` (full functionality compiled in including both the USB CDC console and USB Mass Storage Device class support, and without swdcom support, with a cornerstone to enable resetting functionality back to "factory" settings)
 * `full_swdcom` (full functionality compiled in including swdcom support with a cornerstone* to enable resetting functionality back to "factory" settings)
 * `mini` (i.e. without fixed number, allocator, scheduler, or disassembler support, without swdcom support)
 * `mini_swdcom` (i.e. without fixed number, allocator, scheduler, or disassembler support, including swdcom support)
@@ -167,7 +169,9 @@ and where \<platform> is one of
 
 Note that for the `rp2040`, `rp2040_big`, `rp2350`, or `rp2350_16mib` platforms, to load code with the bootloader onto an RP2040-based or RP2350-based board one needs a `.uf2` file rather than a `.bin` file, unlike the other platforms, which will be located in the same location. Note that these files contain a boot block with a CRC32 checksum.
 
-The `rp2040` and `rp2040_big` platforms only differ, aside from there are no `mini` builds for `rp2040_big`, in that `rp2040` builds devote 960 KB of space to the flash dictionary, 48 KB of space to the flash dictionary index, and 1 MB of space to block storage (but some of that space is not usable due to being used for metadata) while `rp2040_big` builds devote 1472 KB of space to the flash dictionary, 60 KB of space to the flash dictionary index, and 512 MB of space (with overhead) to block storage. `rp2040_big` is intended in particular for zeptoIP, due to the space taken up by the CYW43439 driver and zeptoIP. From this point on, all mentions of `rp2040` shall also encompass `rp2040_big`.
+The `rp2040` and `rp2040_big` platforms only differ, aside from there are no `mini` builds for `rp2040_big`, in that `rp2040` builds devote 960 KiB of space to the flash dictionary, 48 KiB of space to the flash dictionary index, and 1 MiB of space to block storage (but some of that space is not usable due to being used for metadata) while `rp2040_big` builds devote 1472 KiB of space to the flash dictionary, 60 KB of space to the flash dictionary index, and 512 KiB of space (with overhead) to block storage. `rp2040_big` is intended in particular for zeptoIP, due to the space taken up by the CYW43439 driver and zeptoIP. From this point on, all mentions of `rp2040` shall also encompass `rp2040_big`.
+
+The `rp2040_big_16mib` platform is the same as the `rp2040_big` platform except that block storage fills out a full 16 MiB flash chip, and thus is 14848 KiB in size. Note that this is not contained, excluding the kernel, in release tarballs for lack of hardware to build it with. However, if you have an RP2040 board with 16 MiB of flash you can build this platform if you so choose.
 
 The `rp2350` and `rp2350_16mib` platforms only differ in that the full 16 MiB of Quad SPI flash is used by `rp2350_16mib` builds, with the lower 2 MiB being used for the zeptoforth kernel and flash dictionary and the upper 14 MiB being used for block/FAT32 storage, whereas for `rp2350` builds only 2 MiB are available for block/FAT32 storage. Note that there are no `mini` builds available for the `rp2350_16mib` platform, as `mini` builds do not support block/FAT32 storage.
 
@@ -179,6 +183,7 @@ There exist single-core platforms of zeptoforth for the RP2040 and RP2350, speci
 
 * `rp2040_1core`
 * `rp2040_1core_big`
+* `rp2040_1core_big_16mib`
 * `rp2350_1core`
 * `rp2350_1core_16mib`
 
@@ -195,6 +200,57 @@ On RP2040, RP2350, and STM32F746 DISCOVERY boards there is support for FAT32 fil
 However, there is a convenient means of configuring a board to use FAT32 filesystems in on-board flash. This involves loading `extra/common/setup_blocks_fat32.fs` with zeptocom.js, `utils/codeload3.sh`, or e4thcom. This first checks for the existence in block storage of a valid master boot record, and if there is not one, it first initializes one along with a partition containing a FAT32 filesystem, then, if it has not already been compiled, compiles to flash code which sets up the FAT32 filesystem and sets it as the current filesystem on boot-up. After this has been done, on subsequent boots a FAT32 filesystem in Quad SPI flash will be immediately available.
 
 Note that the general unsuitability of FAT32 for in-on board flash is tempered by the fact that block storage provided by zeptoforth has built-in wear leveling.
+
+## Exposing Filesystems with USB Mass Storage Device Class
+
+If you have installed a `full_msc_only` or `full_usb` build, you can (except if you used a PicoCalc installer script, where the SD card is always selected as the block device to expose) select a block device to expose via the USB Mass Storage Device class. Unless you are using a PicoCalc, you must follow one of the sets of steps below before the USB Mass Storage Device class will become available.
+
+The simplest approach is to expose the block device that is already configured for be the default filesystem on boot. This can be done by compiling:
+
+    compile-to-flash
+    fat32-tools import
+    fat32::fat32-internal import
+    : init-usb-blocks current-fs@ fat32-device @ usb::set-usb-blocks ;
+    initializer init-usb-blocks
+    reboot
+
+If the default filesystem is something other than the FAT32 filesystem in blocks storage and you want to expose the blocks storage block device instead compile:
+
+    compile-to-flash
+    setup-blocks-fat32 import
+    simple-blocks-fat32::simple-blocks-fat32-internal import
+    : init-usb-blocks my-fs simple-blocks-fat32-dev usb::set-usb-blocks ;
+    initializer init-usb-blocks
+    reboot
+ 
+If the default filesystem is something other than the SD card FAT32 filesystem and you want to expose the SD card instead compile:
+
+    compile-to-flash
+    : init-usb-blocks <your block device> usb::set-usb-blocks ;
+    initializer init-usb-blocks
+    reboot
+
+Note that here \<your block device> is dependent on your particular setup.
+
+If the default filesystem is something other than the PSRAM disk FAT32 filesystem and you want to expose the PSRAM disk instead compile:
+
+    compile-to-flash
+    psram-fat32 import
+    simple-psram-fat32::simple-psram-fat32-internal import
+    : init-usb-blocks psram-fs@ simple-psram-fat32-dev usb::set-usb-blocks ;
+    initializer init-usb-blocks
+    reboot
+
+## Limitations of the USB Mass Storage Device Class
+
+There are a number of important limitations of the USB Mass Storage Device Class. These are:
+
+* Changes made from the USB host side may not become available on the zeptoforth side until one executes `sync` or equivalent on the USB host side or unmounts the USB Mass Storage Device.
+* One must not delete files or directories that are open on either the zeptoforth side or the USB host side from the other side. Doing so willl likely result in filesystem corruption.
+* Changes made from the zeptoforth side may not be available on the USB host side without unmounted and remounting in between. Failing to do so may result in inconsistency in what one reads from the USB host side.
+* Changes made from the USB host side after changes have been made from the zeptoforth side without unmounting and remounting in between may result in filesystem corruption.
+
+In order to provide a modicum of protection against modifying files or directories open from the zeptoforth side from the USB side, the tool `fat32-tools::ensure-safe-fs` is provided. This will block until all files and directories on the current filesystem are closed, and it will close the current directory and reopen the root directory as the current directory (as the root directory is guaranteed to never be deleted).
 
 ## Initializing PSRAM on RP2350 Boards
 

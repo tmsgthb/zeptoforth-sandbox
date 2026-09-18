@@ -1,4 +1,4 @@
-\ Copyright (c) 2022-2025 Travis Bemann
+\ Copyright (c) 2022-2026 Travis Bemann
 \
 \ Permission is hereby granted, free of charge, to any person obtaining a copy
 \ of this software and associated documentation files (the "Software"), to deal
@@ -236,6 +236,9 @@ begin-module fat32
 
     \ Get the actual filesystem
     method real-fs@ ( fs -- fs' )
+
+    \ Get whether any files or directories are open
+    method fs-open? ( fs -- open? )
     
   end-class
   
@@ -245,6 +248,7 @@ begin-module fat32
     ' abstract-method define with-root-path
     ' abstract-method define root-path-exists?
     ' abstract-method define flush
+    ' abstract-method define fs-open?
   end-implement
   
   \ FAT32 filesystem class
@@ -627,6 +631,9 @@ begin-module fat32
 
       \ Update directory modification date/time
       method update-dir-date-time ( dir -- )
+
+      \ Delete a long file name
+      method remove-lfn ( entry-index entry-cluster dir -- )
       
     end-module
     
@@ -741,6 +748,16 @@ begin-module fat32
     
     \ Get whether a directory entry is for a subdirectory
     method entry-dir? ( entry -- subdir? )
+
+    \ Get whether a directory entry is for a long file name
+    method entry-lfn? ( entry -- lfn? )
+
+    \ Get the sequence number of a long file name entry
+    method entry-lfn-seq@ ( entry -- seq )
+
+    \ Get whether a long file name entry is the last one (note that this is
+    \ stored first in the directory structure)
+    method entry-lfn-end? ( entry -- end? )
     
     \ Get the first cluster index of a directory entry
     method first-cluster@ ( entry -- cluster )
@@ -1333,7 +1350,8 @@ begin-module fat32
     
     :noname ( fs -- cluster )
       [:
-        >r r@ find-free-cluster
+        >r r@ read-info-sector
+        r@ find-free-cluster
         end-cluster-mark over r@ all-fat!
         dup r@ recent-allocated-cluster !
         -1 r@ free-cluster-count +!
@@ -1350,7 +1368,8 @@ begin-module fat32
     
     :noname ( cluster fs -- )
       [:
-        >r free-cluster-mark swap r@ all-fat!
+        >r r@ read-info-sector
+        free-cluster-mark swap r@ all-fat!
         1 r@ free-cluster-count +!
         r> write-info-sector
       ;] over with-fat32-lock
@@ -1586,6 +1605,16 @@ begin-module fat32
         count
       ;] over with-fat32-lock
     ; define dir-open-count
+
+    \ Get whether any files or directories are open
+    :noname ( fs -- open? )
+      [: { fs }
+        fs first-open-file @ 0<>
+        fs last-open-file @ 0<> or
+        fs first-open-dir @ 0<> or
+        fs last-open-dir @ 0<> or
+      ;] over with-fat32-lock
+    ; define fs-open?
     
   end-implement
   
@@ -2133,14 +2162,16 @@ begin-module fat32
     :noname ( c-addr u dir -- )
       dup dir-open @ averts x-not-open
       dup >r
-      dup dir-start-cluster @ swap dir-fs @ dup >r lookup-entry r> -rot ( fs entry-index entry-cluster )
-      <fat32-entry> [: ( fs entry-index entry-cluster entry )
-        dup 3 pick 3 pick 6 pick entry@ ( fs entry-index entry-cluster entry )
-        dup entry-file? averts x-entry-not-file ( fs entry-index entry-cluster entry )
+      -rot 2 pick dir-start-cluster @ 3 pick dir-fs @ dup >r lookup-entry r> -rot ( dir fs entry-index entry-cluster )
+      <fat32-entry> [: ( dir fs entry-index entry-cluster entry )
+        dup 3 pick 3 pick 6 pick entry@ ( dir fs entry-index entry-cluster entry )
+        dup entry-file? averts x-entry-not-file ( dir fs entry-index entry-cluster entry )
         dup first-cluster@ 4 pick file-open-count 0= averts x-open
-        dup first-cluster@ 4 pick free-cluster-chain ( fs entry-index entry-cluster entry )
-        dup mark-entry-deleted ( fs entry-index entry-cluster entry )
-        rot rot 3 roll entry! ( )
+        2 pick 2 pick 6 pick remove-lfn  ( dir fs entry-index entry-cluster entry )
+        dup first-cluster@ 4 pick free-cluster-chain ( dir fs entry-index entry-cluster entry )
+        dup mark-entry-deleted ( dir fs entry-index entry-cluster entry )
+        rot rot 3 roll entry! ( dir )
+        drop
       ;] with-object
       r> update-dir-date-time
     ; define remove-file
@@ -2180,17 +2211,57 @@ begin-module fat32
         dir destroy
         ?raise
       ;] with-aligned-allot
-      dup dir-start-cluster @ swap dir-fs @ dup >r lookup-entry r> -rot ( fs entry-index entry-cluster )
-      <fat32-entry> [: ( fs entry-index entry-cluster entry )
-        dup 3 pick 3 pick 6 pick entry@ ( fs entry-index entry-cluster entry )
-        dup entry-dir? averts x-entry-not-dir ( fs entry-index entry-cluster entry )
+      -rot 2 pick dir-start-cluster @ 3 pick dir-fs @ dup >r lookup-entry r> -rot ( dir fs entry-index entry-cluster )
+      <fat32-entry> [: ( dir fs entry-index entry-cluster entry )
+        dup 3 pick 3 pick 6 pick entry@ ( dir fs entry-index entry-cluster entry )
+        dup entry-dir? averts x-entry-not-dir ( dir fs entry-index entry-cluster entry )
         dup first-cluster@ 4 pick dir-open-count 0= averts x-open
-        dup first-cluster@ 4 pick free-cluster-chain ( fs entry-index entry-cluster entry )
-        dup mark-entry-deleted ( fs entry-index entry-cluster entry )
-        rot rot 3 roll entry! ( )
+        2 pick 2 pick 6 pick remove-lfn  ( dir fs entry-index entry-cluster entry )
+        dup first-cluster@ 4 pick free-cluster-chain ( dir fs entry-index entry-cluster entry )
+        dup mark-entry-deleted ( dir fs entry-index entry-cluster entry )
+        rot rot 3 roll entry! ( dir )
+        drop
       ;] with-object
       r> update-dir-date-time
     ; define remove-dir
+
+    :noname ( entry-index entry-cluster dir -- )
+      <fat32-entry> [: { target-index target-cluster dir entry }
+        0 dir dir-start-cluster @ { cur-index cur-cluster }
+        false -1 -1 { found-lfn? lfn-index lfn-cluster }
+        begin
+          cur-index target-index <> cur-cluster target-cluster <> or
+          cur-index -1 <> and cur-cluster -1 <> and
+        while
+          entry cur-index cur-cluster dir dir-fs @ entry@
+          entry entry-lfn? if
+            entry entry-lfn-end? if
+              true to found-lfn?
+              cur-index to lfn-index cur-cluster to lfn-cluster
+            then
+          else
+            false to found-lfn? -1 to lfn-index -1 to lfn-cluster
+          then
+          1 +to cur-index
+          cur-index cur-cluster dir dir-fs @ find-entry
+          to cur-cluster to cur-index
+        repeat
+        found-lfn? if
+          begin
+            lfn-index target-index <> lfn-cluster target-cluster <> or
+            lfn-index -1 <> and lfn-cluster -1 <> and
+          while
+            entry lfn-index lfn-cluster dir dir-fs @ entry@
+            entry entry-lfn? if
+              lfn-index lfn-cluster dir dir-fs @ delete-entry
+            then
+            1 +to lfn-index
+            lfn-index lfn-cluster dir dir-fs @ find-entry
+            to lfn-cluster to lfn-index
+          repeat
+        then
+      ;] with-object
+    ; define remove-lfn
     
     :noname ( c-addr' u' c-addr u dir - )
       dup dir-open @ averts x-not-open
@@ -2222,6 +2293,7 @@ begin-module fat32
             s" .       " 5 pick short-file-name 8 equal-case-strings?
             s" ..      " 6 pick short-file-name 8 equal-case-strings? or
             s"    " 6 pick short-file-ext 3 equal-case-strings? and
+            4 pick entry-file? not 5 pick entry-dir? not and or
             not if 2drop 2drop false exit then
           then
           rot 1+ -rot
@@ -2446,6 +2518,16 @@ begin-module fat32
     :noname ( entry -- file? ) file-attributes c@ $58 and 0= ; define entry-file?
     
     :noname ( entry -- dir? ) file-attributes c@ $10 and 0<> ; define entry-dir?
+
+    :noname ( entry -- lfn? ) file-attributes c@ $0F = ; define entry-lfn?
+
+    :noname ( entry -- seq )
+      short-file-name c@ dup $E5 = if drop -1 else $1F and then
+    ; define entry-lfn-seq@
+
+    :noname ( entry -- end? )
+      short-file-name c@ dup $E5 = if drop false else $40 and 0<> then
+    ; define entry-lfn-end?
     
     :noname ( entry -- cluster )
       dup first-cluster-low h@ swap first-cluster-high h@ 16 lshift or
