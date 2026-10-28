@@ -92,6 +92,9 @@ begin-module picocalc-term-common
   [else]
     text8 import
   [then]
+
+  \ Color is not 8-bit
+  : x-color-not-8-bit ( -- ) ." color is not 8-bit" cr ;
   
   begin-module picocalc-term-common-internal
 
@@ -206,10 +209,10 @@ begin-module picocalc-term-common
     3 bit constant attr-reverse
 
     \ The default foreground color
-    ansi-term::b-green constant default-fg-color
+    ansi-term::b-green value default-fg-color
 
     \ The default background color
-    ansi-term::black constant default-bk-color
+    ansi-term::black value default-bk-color
     
     \ The terminal colors
     create term-colors
@@ -229,6 +232,16 @@ begin-module picocalc-term-common
     255 0 255 rgb8 c, \ b-magenta
     0 255 255 rgb8 c, \ b-cyan
     255 255 255 rgb8 c, \ b-white
+
+    \ The current terminal colors
+    16 buffer: current-term-colors
+
+    \ Validate a color
+    : validate-color { color -- }
+      color ansi-term::black >= color ansi-term::white <= and
+      color ansi-term::b-black >= color ansi-term::b-white <= and or
+      averts ansi-term::x-not-color
+    ;
 
     \ Modify the foreground color based on attributes
     : modify-color { color-const attr -- color-const' }
@@ -270,7 +283,7 @@ begin-module picocalc-term-common
 
     \ Get the color
     : get-color ( color-const -- color )
-      color-index term-colors + c@
+      color-index current-term-colors + c@
     ;
 
     \ Convert a control character
@@ -333,13 +346,29 @@ begin-module picocalc-term-common
       ['] do-attention attention-hook !
     ;
     initializer init-take-screenshots
-    
+
   end-module> import
 
-  : *depth* ( c -- )
-    [: space emit space depth . flush-console ;] console::with-serial-output
+  \ Reset the terminal default foreground color
+  : reset-term-default-fg-color ( -- ) ansi-term::b-green to default-fg-color ;
+
+  \ Reset the terminal default background color
+  : reset-term-default-bk-color ( -- ) ansi-term::black to default-bk-color ;
+
+  \ Reset the terminal default foreground and background colors
+  : reset-term-default-colors ( -- )
+    reset-term-default-fg-color reset-term-default-bk-color
   ;
   
+  \ Reset the terminal colors' RGB8 mappings
+  : reset-term-colors-rgb8 ( -- ) term-colors current-term-colors 16 move ;
+
+  \ Reset the terminal colors
+  : reset-term-colors ( -- ) reset-term-default-colors reset-term-colors-rgb8 ;
+  
+  \ Initialize the terminal colors
+  initializer reset-term-colors-rgb8
+
   \ The common PicoCalc terminal class
   <object> begin-class <picocalc-term-common>
 
@@ -366,6 +395,12 @@ begin-module picocalc-term-common
       \ The background color
       cell member bk-color
 
+      \ The foreground color is the default color
+      cell member fg-color-default
+
+      \ The background color is the default color
+      cell member bk-color-default
+
       \ The attributes
       cell member attrs
       
@@ -383,6 +418,21 @@ begin-module picocalc-term-common
 
       \ The saved cursor y coordinate
       cell member saved-cursor-y
+
+      \ The top margin
+      cell member top-margin
+
+      \ The bottom margin
+      cell member bottom-margin
+
+      \ Is setting left-right margins enabled
+      cell member left-right-margins-enabled
+
+      \ The left margin
+      cell member left-margin
+
+      \ The right margin
+      cell member right-margin
 
       \ The terminal input task
       cell member input-task
@@ -440,6 +490,12 @@ begin-module picocalc-term-common
 
       \ Take a screenshot
       method handle-screenshot ( self -- )
+
+      \ Check whether the margins are maximal
+      method max-margins? ( self -- max? )
+
+      \ Check whether the left-right margins are maximal
+      method max-left-right-margins? ( self -- max? )
       
       \ Draw the cursor
       method draw-cursor ( self -- )
@@ -501,6 +557,12 @@ begin-module picocalc-term-common
       \ Handle hiding the cursor
       method handle-hide-cursor ( self -- )
 
+      \ Handle enabling setting left-right margins
+      method handle-enable-set-left-right-margins ( self -- )
+
+      \ Handle disabling setting left-right margins
+      method handle-disable-set-left-right-margins ( self -- )
+      
       \ Handle saving the cursor
       method handle-save-cursor ( self -- )
 
@@ -570,6 +632,12 @@ begin-module picocalc-term-common
       \ Parse the text color and style
       method parse-color-style ( addr bytes self -- )
       
+      \ Handle setting top and bottom margins
+      method handle-set-top-bottom-margins ( addr bytes self -- )
+
+      \ Handle setting left and right margins
+      method handle-set-left-right-margins ( addr bytes self -- )
+      
       \ Handle setting the text color and style
       method handle-color-style ( style self -- )
 
@@ -608,7 +676,7 @@ begin-module picocalc-term-common
 
       \ Handle setting the default background color
       method handle-default-bk-color ( self -- )
-      
+
       \ Handle a carriage return
       method handle-return ( self -- )
 
@@ -705,6 +773,15 @@ begin-module picocalc-term-common
 
     \ Flush the output stream
     method flush-term ( self -- )
+
+    \ Refresh the terminal
+    method do-refresh-term ( self -- )
+
+    \ Update the default foreground color
+    method update-default-fg-color ( self -- )
+
+    \ Update the default background color
+    method update-default-bk-color ( self -- )
     
   end-class
 
@@ -722,6 +799,8 @@ begin-module picocalc-term-common
       0 self screenshot-hook !
       default-fg-color self fg-color !
       default-bk-color self bk-color !
+      true self fg-color-default !
+      true self bk-color-default !
       false self visual-bell-enabled !
       false self audible-bell-enabled !
       0 self attrs !
@@ -730,6 +809,11 @@ begin-module picocalc-term-common
       true self cursor-visible !
       0 self saved-cursor-x !
       0 self saved-cursor-y !
+      0 self top-margin !
+      term-height 1- self bottom-margin !
+      false self left-right-margins-enabled !
+      0 self left-margin !
+      term-width 1- self right-margin !
     ; define new
 
     \ Initialize the PicoCalc terminal
@@ -1157,6 +1241,12 @@ begin-module picocalc-term-common
       
       addr bytes s" [?25h" equal-strings? if self handle-show-cursor exit then
       addr bytes s" [?25l" equal-strings? if self handle-hide-cursor exit then
+      addr bytes s" [?69h" equal-strings? if
+        self handle-enable-set-left-right-margins exit
+      then
+      addr bytes s" [?69l" equal-strings? if
+        self handle-disable-set-left-right-margins exit
+      then
       addr bytes s" [s" equal-strings? if self handle-save-cursor exit then
       addr bytes s" [u" equal-strings? if self handle-restore-cursor exit then
       addr bytes s" [6n" equal-strings? if
@@ -1177,6 +1267,12 @@ begin-module picocalc-term-common
       last-char [char] S = if addr bytes self handle-scroll-up exit then
       last-char [char] T = if addr bytes self handle-scroll-down exit then
       last-char [char] f = if addr bytes self handle-cursor-pos exit then
+      last-char [char] r = if
+        addr bytes self handle-set-top-bottom-margins exit
+      then
+      last-char [char] s = if
+        addr bytes self handle-set-left-right-margins exit
+      then
       last-char [char] m = if addr bytes self parse-color-style exit then
     ; define parse-escape
 
@@ -1206,7 +1302,19 @@ begin-module picocalc-term-common
     :noname { self -- }
       false self cursor-visible !
     ; define handle-hide-cursor
-    
+
+    \ Handle enabling setting left-right margins
+    :noname { self -- }
+      true self left-right-margins-enabled !
+    ; define handle-enable-set-left-right-margins
+
+    \ Handle disabling setting left-right margins
+    :noname { self -- }
+      false self left-right-margins-enabled !
+      0 self left-margin !
+      [ term-width 1- ] literal self right-margin !
+    ; define handle-disable-set-left-right-margins
+
     \ Handle saving the cursor
     :noname { self -- }
       self cursor-x @ self saved-cursor-x !
@@ -1319,7 +1427,39 @@ begin-module picocalc-term-common
         then
       then
     ; define handle-cursor-pos
-    
+
+    \ Handle setting top and bottom margins
+    :noname { addr bytes self -- }
+      1 addr 1+ bytes 1- self parse-dec { top top-bytes }
+      addr 1+ top-bytes + c@ [char] ; = if
+        1 addr 2 + top-bytes + bytes 2 - top-bytes - self parse-dec
+        { bottom bottom-bytes }
+        bytes 2 - top-bytes - bottom-bytes - 1 = if
+          bottom 1- 0 max [ term-height 1- ] literal min to bottom
+          top 1- 0 max [ term-height 1- ] literal min self top-margin !
+          self top-margin @ bottom max self bottom-margin !
+          0 self cursor-x !
+          0 self cursor-y !
+        then
+      then
+    ; define handle-set-top-bottom-margins
+
+    \ Handle setting left and right margins
+    :noname { addr bytes self -- }
+      1 addr 1+ bytes 1- self parse-dec { left left-bytes }
+      addr 1+ left-bytes + c@ [char] ; = if
+        1 addr 2 + left-bytes + bytes 2 - left-bytes - self parse-dec
+        { right right-bytes }
+        bytes 2 - left-bytes - right-bytes - 1 = if
+          right 1- 0 max [ term-width 1- ] literal min to right
+          left 1- 0 max [ term-width 1- ] literal min self left-margin !
+          self left-margin @ right max self right-margin !
+          0 self cursor-x !
+          0 self cursor-y !
+        then
+      then
+    ; define handle-set-left-right-margins
+
     \ Handle erasing in the display
     :noname { addr bytes self -- }
       0 addr 1+ bytes 1- self parse-dec bytes 2 - = if
@@ -1488,11 +1628,13 @@ begin-module picocalc-term-common
     
     \ Handle setting the foreground color
     :noname { color self -- }
+      false self fg-color-default !
       color self fg-color !
     ; define handle-fg-color
 
     \ Handle setting the background color
     :noname { color self -- }
+      false self bk-color-default !
       color ansi-term::ansi-term-internal::background-offset - self bk-color !
     ; define handle-bk-color
 
@@ -1541,24 +1683,32 @@ begin-module picocalc-term-common
     \ Handle setting the default foreground color
     :noname { self -- }
       default-fg-color self fg-color !
+      true self fg-color-default !
     ; define handle-default-fg-color
 
     \ Handle setting the default background color
     :noname { self -- }
       default-bk-color self bk-color !
+      true self bk-color-default !
     ; define handle-default-bk-color
 
     \ Handle a carriage return
     :noname { self -- }
-      0 self cursor-x !
+      self left-margin @ self cursor-x !
     ; define handle-return
     
     \ Handle a linefeed
     :noname { self -- }
-      self cursor-y @ term-height 1- < if
+      self cursor-y @ self bottom-margin @ < if
         1 self cursor-y +!
       else
-        1 self scroll-up
+        self cursor-y @ self bottom-margin @ = if
+          1 self scroll-up
+        else
+          self cursor-y @ [ term-height 1- ] literal < if
+            1 self cursor-y +!
+          then
+        then
       then
     ; define handle-linefeed
     
@@ -1582,9 +1732,15 @@ begin-module picocalc-term-common
     :noname { c self -- }
       c $20 < c $7E > or if exit then
       self cursor-x @ self cursor-y @ { x y }
-      x term-width = if
-        0 to x
-        y term-height 1- >= if 1 self scroll-up else y 1+ to y then
+      x self right-margin @ 1+ = x term-width = or if
+        self left-margin @ to x
+        y self bottom-margin @ = if
+          1 self scroll-up
+        else
+          y term-height 1- < if
+            y 1+ to y
+          then
+        then
       then
       y self cursor-y !
       x 1+ self cursor-x !
@@ -1696,6 +1852,18 @@ begin-module picocalc-term-common
         dup not if pause-reschedule-last then
       until
     ; define do-raw-key>
+
+    \ Check whether the margins are maximal
+    :noname { self -- max? }
+      self top-margin @ 0=
+      self bottom-margin @ [ term-height 1- ] literal = and
+      self max-left-right-margins? and
+    ; define max-margins?
+
+    \ Check whether the left-right margins are maximal
+    :noname { self -- max? }
+      self left-margin @ 0= self right-margin @ [ term-width 1- ] literal = and
+    ; define max-left-right-margins?
     
     \ Draw the cursor
     :noname { self -- }
@@ -1750,6 +1918,26 @@ begin-module picocalc-term-common
       repeat
     ; define flush-term
 
+    \ Refresh the terminal
+    :noname ( self -- )
+      [: { self }
+        term-height 0 ?do
+          term-width 0 ?do true i j self draw-char-with-cursor loop
+        loop
+        self do-update-display
+      ;] over do-with-term-lock
+    ; define do-refresh-term
+
+    \ Update the default foreground color
+    :noname { self -- }
+      self fg-color-default @ if default-fg-color self fg-color ! then
+    ; define update-default-fg-color
+
+    \ Update the default background color
+    :noname { self -- }
+      self bk-color-default @ if default-bk-color self bk-color ! then
+    ; define update-default-bk-color
+
   end-implement
 
   \ Get the terminal pixel dimensions
@@ -1769,6 +1957,33 @@ begin-module picocalc-term-common
     [ use-6x8-font? ] [if] a-simple-font-6x8 [then]
     [ use-6x12-font? ] [if] a-simple-font-6x12 [then]
     [ use-7x8-font? ] [if] a-simple-font [then]
+  ;
+
+  \ Get the terminal default foreground color
+  : term-default-fg-color@ ( -- color-const ) default-fg-color ;
+
+  \ Set the terminal default foreground color
+  : term-default-fg-color! ( color-const -- )
+    dup validate-color to default-fg-color
+  ;
+
+  \ Get the terminal default background color
+  : term-default-bk-color@ ( -- color-const ) default-bk-color ;
+
+  \ Set the terminal default background color
+  : term-default-bk-color! ( color-const -- )
+    dup validate-color to default-bk-color
+  ;
+
+  \ Get a terminal color as RGB8
+  : term-color-rgb8@ ( color-const -- color )
+    dup validate-color get-color
+  ;
+
+  \ Set a terminal color as RGB8
+  : term-color-rgb8! ( color color-const -- )
+    dup validate-color over $100 u< averts x-color-not-8-bit
+    color-index current-term-colors + c!
   ;
   
 end-module
